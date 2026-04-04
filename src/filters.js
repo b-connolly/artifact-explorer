@@ -35,7 +35,12 @@ export function buildWhere(state) {
     parts.push(`country = '${state.country.replace(/'/g, "''")}'`);
   }
   if (state.timeRange) {
-    parts.push(`year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`);
+    const timeClause = `year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`;
+    if (state.includeUndated) {
+      parts.push(`(${timeClause} OR year_start IS NULL)`);
+    } else {
+      parts.push(timeClause);
+    }
   }
   return parts.length ? parts.join(" AND ") : "1=1";
 }
@@ -68,8 +73,9 @@ export function applyFilters(state, layers) {
   // Time filter → client-side layerView.filter (GPU-accelerated, instant)
   if (sceneLayerView) {
     if (state.timeRange) {
+      const timeClause = `year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`;
       sceneLayerView.filter = {
-        where: `year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`,
+        where: state.includeUndated ? `(${timeClause} OR year_start IS NULL)` : timeClause,
       };
     } else {
       sceneLayerView.filter = null;

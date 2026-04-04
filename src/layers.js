@@ -23,6 +23,7 @@ import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol.js";
 import Graphic from "@arcgis/core/Graphic.js";
 import Point from "@arcgis/core/geometry/Point.js";
 import Glow from "@arcgis/core/webscene/Glow.js";
+import * as reactiveUtils from "@arcgis/core/core/reactiveUtils.js";
 import { MUSEUMS } from "./museums.js";
 
 // --- HTML escaping for popup content ---
@@ -187,7 +188,7 @@ function initPulseCanvas(view) {
     pulseCtx.scale(dpr, dpr);
   }
   resize();
-  view.watch("size", resize);
+  reactiveUtils.watch(() => [view.width, view.height], resize);
 }
 
 function startPulse(museumIds) {

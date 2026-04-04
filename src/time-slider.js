@@ -85,6 +85,16 @@ export function initTimeSlider(onChange) {
   }
   document.getElementById("time-slider").appendChild(tickContainer);
 
+  // "Include undated" checkbox — after ticks
+  const undatedLabel = document.createElement("label");
+  undatedLabel.id = "include-undated";
+  undatedLabel.innerHTML = `<input type="checkbox" id="undated-check" checked /> Include undated`;
+  document.getElementById("time-slider").appendChild(undatedLabel);
+
+  document.getElementById("undated-check").addEventListener("change", () => {
+    update();
+  });
+
   function update() {
     const loPos = parseInt(minInput.value, 10);
     const hiPos = parseInt(maxInput.value, 10);
@@ -126,6 +136,11 @@ export function initTimeSlider(onChange) {
 /**
  * Programmatically set the time slider range.
  */
+export function getIncludeUndated() {
+  const el = document.getElementById("undated-check");
+  return el ? el.checked : true;
+}
+
 export function setTimeRange(lo, hi) {
   const minInput = document.getElementById("time-min");
   const maxInput = document.getElementById("time-max");

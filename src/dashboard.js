@@ -18,7 +18,6 @@ let queryLayer = null;
 let callbacks = {};
 let debounceTimer = null;
 let dashboardEl = null;
-let currentMuseum = null;
 let lastMuseumWhere = null;
 
 // --- Continent mapping for heatmap ---
@@ -129,7 +128,6 @@ export function initDashboard(layer, cbs) {
           canvas.parentElement.style.position = "relative";
           canvas.parentElement.appendChild(selectionDiv);
         }
-        const rect = canvas.getBoundingClientRect();
         const parentRect = canvas.parentElement.getBoundingClientRect();
         const left = Math.min(dragStart, e.clientX) - parentRect.left;
         const width = Math.abs(e.clientX - dragStart);
@@ -209,8 +207,6 @@ function createDOM() {
 async function runUpdate(state) {
   if (!queryLayer || !dashboardEl) return;
   const where = buildWhere(state);
-
-  currentMuseum = state.museum;
 
   try {
     // Flow diagram only changes on museum selection, not time/country filters
@@ -312,8 +308,6 @@ function renderMuseumBars(data, state) {
   const body = document.getElementById("dash-museums-body");
   if (!body) return;
 
-  const max = data[0]?.count || 1;
-
   // "All Museums" row + individual museums
   const totalCount = data.reduce((s, d) => s + d.count, 0);
   let html = `
@@ -359,7 +353,7 @@ function renderCountryBars(data, state) {
   const top = data.slice(0, 8);
   const max = top[0]?.count || 1;
 
-  body.innerHTML = top.map((d, i) => {
+  body.innerHTML = top.map((d) => {
     const pct = (d.count / max) * 100;
     const selected = state.country === d.country ? " selected" : "";
     return `
@@ -505,6 +499,7 @@ function animateFlow(canvas) {
 }
 
 function drawFlow(canvas, progress) {
+  if (!canvas._flowData) return;
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const W = 276;
@@ -518,7 +513,7 @@ function drawFlow(canvas, progress) {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  const { grid, museums, regions, museumTotals, regionTotals } = canvas._flowData;
+  const { grid, museums, regions, regionTotals } = canvas._flowData;
 
   const leftX = 70;
   const rightX = W - 80;

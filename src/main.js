@@ -22,7 +22,7 @@ import { updateArcs, clearArcs } from "./arcs.js";
 import { loadThumbnails, clearThumbnails } from "./thumbnails.js";
 import { initSidebar, openSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
 import { initToolbar, updateArtifactCount, updateCountryCount, showImageProgress, hideImageProgress } from "./toolbar.js";
-import { initTimeSlider, setTimeRange } from "./time-slider.js";
+import { initTimeSlider, setTimeRange, getIncludeUndated } from "./time-slider.js";
 import { initDashboard, updateDashboard } from "./dashboard.js";
 
 // --- OAuth ---
@@ -99,6 +99,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     if (!state.museum) stopSpin();
     else pauseSpin();
 
+    state.includeUndated = getIncludeUndated();
     applyFilters(state, layers);
     const count = await getFilteredCount(queryLayer, state);
     updateArtifactCount(count);
@@ -312,6 +313,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     },
     onTimeSelect: (lo, hi) => {
       state.timeRange = (lo != null && hi != null) ? { lo, hi } : null;
+      state.includeUndated = getIncludeUndated();
       if (lo != null && hi != null) {
         setTimeRange(lo, hi);
       } else {
@@ -393,7 +395,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
   // --- Sidebar thumbnail click → fly to artifact ---
   document.getElementById("sidebar-content")?.addEventListener("click", (e) => {
-    const thumb = e.target.closest(".sidebar-thumb");
+    const thumb = e.target.closest(".sidebar-thumb") || e.target.closest(".sidebar-search-item");
     if (!thumb) return;
     queryLayer.queryFeatures({
       where: `artifact_id = '${thumb.dataset.id}'`,
@@ -454,6 +456,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   // --- Time slider ---
   initTimeSlider(async (lo, hi) => {
     state.timeRange = (lo != null && hi != null) ? { lo, hi } : null;
+    state.includeUndated = getIncludeUndated();
     setTimeFilter(lo, hi);
     pauseSpin();
     applyFilters(state, layers);
