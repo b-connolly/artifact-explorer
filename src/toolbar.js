@@ -9,6 +9,7 @@ import { MUSEUM_COLORS } from "./layers.js";
 
 let countEl = null;
 let countryCountEl = null;
+let museumCountEl = null;
 let filterBarEl = null;
 let onResetMuseum = null;
 let onResetCountry = null;
@@ -20,6 +21,10 @@ export function updateArtifactCount(count) {
 
 export function updateCountryCount(count) {
   if (countryCountEl) countryCountEl.textContent = count.toLocaleString();
+}
+
+export function updateMuseumCount(count) {
+  if (museumCountEl) museumCountEl.textContent = count.toLocaleString();
 }
 
 export function updateFilterBar(state) {
@@ -118,6 +123,18 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   countryWrapper.appendChild(countryCountEl);
   countryWrapper.appendChild(countryLabel);
 
+  // --- Museum count ---
+  const museumWrapper = document.createElement("div");
+  museumWrapper.id = "museum-count";
+  museumCountEl = document.createElement("span");
+  museumCountEl.id = "museum-count-value";
+  museumCountEl.textContent = Object.keys(MUSEUMS).length;
+  const museumLabel = document.createElement("span");
+  museumLabel.id = "museum-count-label";
+  museumLabel.textContent = "museums";
+  museumWrapper.appendChild(museumCountEl);
+  museumWrapper.appendChild(museumLabel);
+
   // --- View mode toggle ---
   const modes = ["columns"]; // "images" hidden for now
   const icons = {
@@ -162,25 +179,20 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
     pill.dataset.museum = id;
     pill.title = MUSEUMS[id].name;
     pill.innerHTML = `<span class="pill-dot" style="background:rgb(${color.join(",")})"></span><span class="pill-label">${MUSEUMS[id].name}</span>`;
-    pill.addEventListener("click", (e) => {
+    pill.addEventListener("click", () => {
       const pills = [...museumBar.querySelectorAll(".museum-pill")];
-      const activePills = pills.filter((p) => p.classList.contains("active"));
 
-      if (e.shiftKey) {
-        // Shift+click: toggle this pill additively
-        pill.classList.toggle("active");
-      } else {
-        // Single click: if this is the only active one, re-select all
-        if (activePills.length === 1 && activePills[0] === pill) {
-          pills.forEach((p) => p.classList.add("active"));
-        } else {
-          // Otherwise: select only this one
-          pills.forEach((p) => p.classList.remove("active"));
-          pill.classList.add("active");
-        }
+      // Toggle this pill
+      pill.classList.toggle("active");
+
+      // If none are active, re-select all
+      const activePills = pills.filter((p) => p.classList.contains("active"));
+      if (activePills.length === 0) {
+        pills.forEach((p) => p.classList.add("active"));
       }
 
       const active = [...museumBar.querySelectorAll(".museum-pill.active")].map((p) => p.dataset.museum);
+      updateMuseumCount(active.length);
       onMuseumChange(active);
     });
     museumBar.appendChild(pill);
@@ -198,7 +210,8 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   legendToggle.id = "legend-toggle";
   legendToggle.title = "Toggle legend";
   legendToggle.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="4" rx="1" fill="currentColor" opacity="0.4"/><line x1="13" y1="5" x2="21" y2="5"/><rect x="3" y="10" width="7" height="4" rx="1" fill="currentColor" opacity="0.6"/><line x1="13" y1="12" x2="21" y2="12"/><rect x="3" y="17" width="7" height="4" rx="1" fill="currentColor" opacity="0.8"/><line x1="13" y1="19" x2="21" y2="19"/></svg>`;
-  legendToggle.addEventListener("click", () => {
+  legendToggle.addEventListener("click", (e) => {
+    e.stopPropagation();
     let panel = document.getElementById("legend-panel");
     if (!panel) {
       panel = createLegendPanel(onMuseumChange);
@@ -209,6 +222,14 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
     }
   });
 
+  // Close legend on tap outside
+  document.addEventListener("click", (e) => {
+    const panel = document.getElementById("legend-panel");
+    if (panel?.classList.contains("visible") && !panel.contains(e.target) && !e.target.closest("#legend-toggle")) {
+      panel.classList.remove("visible");
+    }
+  });
+
   // --- Filter bar ---
   filterBarEl = document.createElement("div");
   filterBarEl.id = "filter-bar";
@@ -216,19 +237,35 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
 
   wrapper.appendChild(countWrapper);
   wrapper.appendChild(countryWrapper);
-  wrapper.appendChild(dashToggle);
-  wrapper.appendChild(legendToggle);
+  wrapper.appendChild(museumWrapper);
   document.body.appendChild(wrapper);
   document.body.appendChild(filterBarEl);
   document.body.appendChild(museumBar);
-  document.body.appendChild(infoBtn);
 
-  // --- Spin toggle (bottom-right, standalone) ---
+  // --- Controls tray (bottom-right) ---
   const spinToggle = document.createElement("button");
   spinToggle.id = "spin-toggle";
   spinToggle.title = "Toggle globe spin";
   spinToggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
-  document.body.appendChild(spinToggle);
+
+  const tray = document.createElement("div");
+  tray.id = "controls-tray";
+  tray.appendChild(infoBtn);
+  tray.appendChild(dashToggle);
+  tray.appendChild(legendToggle);
+  // time-toggle is appended by time-slider.js, will be moved into tray
+  tray.appendChild(spinToggle);
+  document.body.appendChild(tray);
+
+  // Move time-toggle into tray once it's created (by time-slider.js)
+  const observer = new MutationObserver(() => {
+    const timeToggle = document.getElementById("time-toggle");
+    if (timeToggle && timeToggle.parentElement !== tray) {
+      tray.insertBefore(timeToggle, spinToggle);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true });
 }
 
 let onResetAll = null;

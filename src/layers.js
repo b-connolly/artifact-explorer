@@ -191,8 +191,45 @@ function initPulseCanvas(view) {
   reactiveUtils.watch(() => [view.width, view.height], resize);
 }
 
+let pulseT = 0;
+
+function ensurePulseLoop() {
+  if (pulseAnimId) return; // already running
+  function animate() {
+    pulseT = (pulseT + 0.003) % 1;
+    const dpr = window.devicePixelRatio || 1;
+    pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
+
+    for (const target of pulseMuseums) {
+      const sp = pulseView.toScreen(target.point);
+      if (!sp) continue;
+      const maxR = 25;
+      const r = 8 + pulseT * maxR;
+      const alpha = 0.3 * (1 - pulseT);
+      const [cr, cg, cb] = target.color;
+      pulseCtx.beginPath();
+      pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+      pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+      pulseCtx.lineWidth = 1.5;
+      pulseCtx.stroke();
+    }
+
+    drawCountryPulse(pulseT);
+
+    // Stop loop if nothing to animate
+    if (pulseMuseums.length === 0 && !countryPulseTarget) {
+      cancelAnimationFrame(pulseAnimId);
+      pulseAnimId = null;
+      pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
+      return;
+    }
+    pulseAnimId = requestAnimationFrame(animate);
+  }
+  pulseAnimId = requestAnimationFrame(animate);
+}
+
 function startPulse(museumIds) {
-  stopPulse();
+  pulseMuseums = [];
   if (!museumIds.length || !pulseView) return;
 
   pulseMuseums = museumIds
@@ -203,47 +240,12 @@ function startPulse(museumIds) {
       color: MUSEUM_COLORS[t.id] || t.museum.color,
     }));
 
-  let t = 0;
-  function animate() {
-    t = (t + 0.003) % 1;
-    const dpr = window.devicePixelRatio || 1;
-    pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-
-    for (const target of pulseMuseums) {
-      const sp = pulseView.toScreen(target.point);
-      if (!sp) continue;
-
-      const maxR = 25;
-      const r = 8 + t * maxR;
-      const alpha = 0.3 * (1 - t);
-      const [cr, cg, cb] = target.color;
-
-      pulseCtx.beginPath();
-      pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
-      pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-      pulseCtx.lineWidth = 1.5;
-      pulseCtx.stroke();
-    }
-
-    // Also draw country pulse if active
-    drawCountryPulse(t);
-
-    pulseAnimId = requestAnimationFrame(animate);
-  }
-  animate();
+  ensurePulseLoop();
 }
 
 function stopPulse() {
   pulseMuseums = [];
-  // Only stop animation if no country pulse is active
-  if (!countryPulseTarget) {
-    if (pulseAnimId) cancelAnimationFrame(pulseAnimId);
-    pulseAnimId = null;
-    if (pulseCtx && pulseCanvas) {
-      const dpr = window.devicePixelRatio || 1;
-      pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-    }
-  }
+  // Loop will self-stop on next frame if countryPulseTarget is also null
 }
 
 // --- Country centroid pulse ---
@@ -254,31 +256,12 @@ function startCountryPulse(lng, lat, color = [0, 233, 255]) {
     point: new Point({ longitude: lng, latitude: lat, spatialReference: { wkid: 4326 } }),
     color,
   };
-  // If museum pulse isn't running, start a dedicated animation
-  if (!pulseAnimId) {
-    let t = 0;
-    function animate() {
-      t = (t + 0.001) % 1;
-      const dpr = window.devicePixelRatio || 1;
-      pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-      drawCountryPulse(t);
-      pulseAnimId = requestAnimationFrame(animate);
-    }
-    animate();
-  }
+  ensurePulseLoop();
 }
 
 function stopCountryPulse() {
   countryPulseTarget = null;
-  // If no museum pulse running either, clear canvas
-  if (pulseMuseums.length === 0 && pulseAnimId) {
-    cancelAnimationFrame(pulseAnimId);
-    pulseAnimId = null;
-    if (pulseCtx && pulseCanvas) {
-      const dpr = window.devicePixelRatio || 1;
-      pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-    }
-  }
+  // Loop will self-stop on next frame if pulseMuseums is also empty
 }
 
 function drawCountryPulse(globalT) {

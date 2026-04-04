@@ -131,6 +131,26 @@ export function initTimeSlider(onChange) {
   // Also fire immediately on release for final value
   minInput.addEventListener("change", update);
   maxInput.addEventListener("change", update);
+
+  // Toggle button
+  const slider = document.getElementById("time-slider");
+  const toggle = document.createElement("button");
+  toggle.id = "time-toggle";
+  toggle.className = "active";
+  toggle.title = "Toggle time slider";
+  toggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+  document.body.appendChild(toggle);
+
+  // Collapse on mobile by default
+  if (window.innerWidth <= 768) {
+    slider.classList.add("collapsed");
+    toggle.classList.remove("active");
+  }
+
+  toggle.addEventListener("click", () => {
+    slider.classList.toggle("collapsed");
+    toggle.classList.toggle("active");
+  });
 }
 
 /**

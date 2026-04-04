@@ -232,6 +232,11 @@ function createDOM() {
     </div>
   `;
   document.body.appendChild(dashboardEl);
+
+  // Collapse by default on mobile
+  if (window.innerWidth <= 768) {
+    dashboardEl.classList.add("collapsed");
+  }
 }
 
 // --- Queries ---

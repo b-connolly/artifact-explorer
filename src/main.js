@@ -21,7 +21,7 @@ import { updateColumns, clearColumns } from "./columns.js";
 import { updateArcs, clearArcs } from "./arcs.js";
 import { loadThumbnails, clearThumbnails } from "./thumbnails.js";
 import { initSidebar, openSidebar, closeSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
-import { initToolbar, updateArtifactCount, updateCountryCount, showImageProgress, hideImageProgress, updateFilterBar, registerResetCallbacks } from "./toolbar.js";
+import { initToolbar, updateArtifactCount, updateCountryCount, updateMuseumCount, showImageProgress, hideImageProgress, updateFilterBar, registerResetCallbacks } from "./toolbar.js";
 import { initTimeSlider, setTimeRange, getIncludeUndated } from "./time-slider.js";
 import { initDashboard, updateDashboard, CONTINENT_MAP } from "./dashboard.js";
 
@@ -305,6 +305,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       stopSpin(); updateSpinButton();
       applyFilters(state, layers);
       getFilteredCount(queryLayer, state).then(updateArtifactCount);
+      updateCountryCount(1);
       updateDashboard(state); updateFilterBar(state);
       await flyToCountry(country);
     },
@@ -313,6 +314,11 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       state.regionCountries = null;
       setMuseumFilter(museumId);
       pulseForMuseum(museumId);
+      updateMuseumCount(1);
+      // Sync pills
+      document.querySelectorAll("#museum-pills .museum-pill").forEach((p) => {
+        p.classList.toggle("active", p.dataset.museum === museumId);
+      });
       updateSpinButton();
       update();
     },
@@ -378,7 +384,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   // Start with all museums active — spin + pulse + columns
   setMuseumFilter("all");
   pulseForMuseum("all");
-  startSpin();
+  if (window.innerWidth > 768) startSpin();
   updateSpinButton();
   update();
 
@@ -391,6 +397,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       pulseForMuseum("all");
       const pills = document.querySelectorAll("#museum-pills .museum-pill");
       pills.forEach((p) => p.classList.add("active"));
+      updateMuseumCount(Object.keys(MUSEUMS).length);
       updateSpinButton();
       update();
     },
@@ -432,10 +439,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       view.closePopup();
       const pills = document.querySelectorAll("#museum-pills .museum-pill");
       pills.forEach((p) => p.classList.add("active"));
+      updateMuseumCount(Object.keys(MUSEUMS).length);
 
-      // Zoom out to initial view
+      // Zoom out to initial view — reset tilt to 0
       await view.goTo({
-        position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 }
+        position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 },
+        heading: 0,
+        tilt: 0,
       }, { duration: 1500 });
 
       // Start spin
@@ -648,7 +658,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     highlightCountry(country, layers);
 
     if (centroid) {
-      view.popup.dockEnabled = false;
+      const isMobile = window.innerWidth <= 768;
+      view.popup.dockEnabled = isMobile;
+      if (isMobile) {
+        view.popup.dockOptions = { buttonEnabled: false, breakpoint: false, position: "bottom-center" };
+        const dashEl = document.getElementById("dashboard");
+        if (dashEl) dashEl.classList.add("collapsed");
+      }
 
       await view.goTo({
         center: [centroid.lng, centroid.lat - 3],
@@ -701,6 +717,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
           state.regionCountries = null;
           applyFilters(state, layers);
           getFilteredCount(queryLayer, state).then(updateArtifactCount);
+          updateCountryCount(1);
           updateDashboard(state); updateFilterBar(state);
           await flyToCountry(country);
         }
@@ -728,8 +745,8 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     (visible) => {
       if (!visible) {
         const dashEl = document.getElementById("dashboard");
-        if (dashEl) dashEl.classList.remove("collapsed");
-        view.popup.dockEnabled = false;
+        if (dashEl && window.innerWidth > 768) dashEl.classList.remove("collapsed");
+        view.popup.dockEnabled = window.innerWidth <= 768;
         // Only clear darken mask if no country is actively selected
         stopCountryPulse();
         if (!activeCountry) {

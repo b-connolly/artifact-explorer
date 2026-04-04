@@ -230,6 +230,12 @@ export async function animateArcsOut(view, museumId, onComplete) {
     t.cy = (mY + t.y) / 2 - (t.dist * 0.5 + Math.pow(t.dist, 1.05) * 0.1 + 40);
   }
 
+  // Cancel any prior animation before starting new one
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+
   ensureCanvas(view);
   const start = performance.now();
 
