@@ -8,7 +8,6 @@ data/
 
 # Keep runtime data
 !data/centroids.json
-!public/data/
 
 # OS
 .DS_Store
