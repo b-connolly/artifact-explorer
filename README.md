@@ -25,31 +25,6 @@ Explore artifacts from three of the world's largest collections:
 - [Vite](https://vitejs.dev/) build tool
 - Hosted FeatureLayer + SceneLayer on ArcGIS Online
 
-## Setup
-
-```bash
-npm install
-```
-
-Create a `.env` file with your API keys:
-
-```
-VITE_ARCGIS_KEY=your_arcgis_developer_api_key
-VITE_ARCGIS_CLIENT_ID=your_arcgis_oauth_client_id
-```
-
-Run the dev server:
-
-```bash
-npm run dev
-```
-
-Build for production:
-
-```bash
-npm run build
-```
-
 ## Data Sources
 
 - [British Museum Collection](https://www.britishmuseum.org/collection)
