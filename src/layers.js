@@ -33,7 +33,7 @@ function esc(str) {
 }
 
 // --- URLs ---
-const SCENE_URL = "https://services1.arcgis.com/uujCiiEZAflDbdxE/arcgis/rest/services/artifactsLayer/SceneServer/layers/0";
+const SCENE_URL = "https://services1.arcgis.com/uujCiiEZAflDbdxE/arcgis/rest/services/artifactsLayer/SceneServer";
 const FEATURE_URL = "https://services1.arcgis.com/uujCiiEZAflDbdxE/arcgis/rest/services/artifactsLayer/FeatureServer/0";
 const COUNTRIES_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Countries_(Generalized)/FeatureServer/0";
 
@@ -205,7 +205,7 @@ function startPulse(museumIds) {
 
   let t = 0;
   function animate() {
-    t = (t + 0.008) % 1;
+    t = (t + 0.003) % 1;
     const dpr = window.devicePixelRatio || 1;
     pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
 
@@ -213,24 +213,15 @@ function startPulse(museumIds) {
       const sp = pulseView.toScreen(target.point);
       if (!sp) continue;
 
-      const maxR = 30;
+      const maxR = 25;
       const r = 8 + t * maxR;
-      const alpha = 0.6 * (1 - t);
+      const alpha = 0.3 * (1 - t);
       const [cr, cg, cb] = target.color;
 
       pulseCtx.beginPath();
       pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
       pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-      pulseCtx.lineWidth = 2;
-      pulseCtx.stroke();
-
-      // Second ring offset
-      const t2 = (t + 0.5) % 1;
-      const r2 = 8 + t2 * maxR;
-      const alpha2 = 0.6 * (1 - t2);
-      pulseCtx.beginPath();
-      pulseCtx.arc(sp.x, sp.y, r2, 0, Math.PI * 2);
-      pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha2})`;
+      pulseCtx.lineWidth = 1.5;
       pulseCtx.stroke();
     }
 
@@ -267,7 +258,7 @@ function startCountryPulse(lng, lat, color = [0, 233, 255]) {
   if (!pulseAnimId) {
     let t = 0;
     function animate() {
-      t = (t + 0.002) % 1;
+      t = (t + 0.001) % 1;
       const dpr = window.devicePixelRatio || 1;
       pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
       drawCountryPulse(t);
@@ -296,20 +287,17 @@ function drawCountryPulse(globalT) {
   if (!sp) return;
 
   const [cr, cg, cb] = countryPulseTarget.color;
-  const numRings = 2;
 
-  for (let i = 0; i < numRings; i++) {
-    const t = (globalT + i / numRings) % 1;
-    const maxR = 50;
-    const r = 8 + t * maxR;
-    const alpha = 0.4 * (1 - t);
+  // Single ring, heartbeat speed
+  const maxR = 35;
+  const r = 6 + globalT * maxR;
+  const alpha = 0.3 * (1 - globalT);
 
-    pulseCtx.beginPath();
-    pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
-    pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-    pulseCtx.lineWidth = 1.5 * (1 - t * 0.5);
-    pulseCtx.stroke();
-  }
+  pulseCtx.beginPath();
+  pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+  pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+  pulseCtx.lineWidth = 1.5;
+  pulseCtx.stroke();
 
   // Soft center glow
   const gradient = pulseCtx.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, 6);
@@ -339,17 +327,13 @@ function highlightCountry(countryName, layers) {
 
   // Darken everything except the selected country
   layers.darkenLayer.definitionExpression = `COUNTRY <> '${escaped}'`;
-  layers.darkenLayer.visible = true;
 
   // Highlight the selected country with glow outline
   layers.highlightLayer.definitionExpression = `COUNTRY = '${escaped}'`;
-  layers.highlightLayer.visible = true;
 }
 
 function clearCountryHighlight(layers) {
-  layers.darkenLayer.visible = false;
   layers.darkenLayer.definitionExpression = "1=0";
-  layers.highlightLayer.visible = false;
   layers.highlightLayer.definitionExpression = "1=0";
 }
 
@@ -397,7 +381,7 @@ export function createLayers(view) {
     visible: false,
   });
 
-  // Country darken overlay
+  // Country darken overlay — always visible, controlled by definitionExpression
   const darkenLayer = new FeatureLayer({
     url: COUNTRIES_URL,
     renderer: new SimpleRenderer({
@@ -407,11 +391,11 @@ export function createLayers(view) {
       }),
     }),
     definitionExpression: "1=0",
-    visible: false,
+    visible: true,
     title: "Country Darken",
   });
 
-  // Country highlight overlay
+  // Country highlight overlay — always visible, controlled by definitionExpression
   const highlightLayer = new FeatureLayer({
     url: COUNTRIES_URL,
     renderer: new SimpleRenderer({
@@ -421,7 +405,7 @@ export function createLayers(view) {
       }),
     }),
     definitionExpression: "1=0",
-    visible: false,
+    visible: true,
     title: "Country Highlights",
   });
 

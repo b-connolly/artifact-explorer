@@ -14,7 +14,7 @@ import "@arcgis/map-components/components/arcgis-zoom";
 import "@arcgis/map-components/components/arcgis-navigation-toggle";
 import "@arcgis/map-components/components/arcgis-compass";
 
-import { createLayers, buildPopup, initPulseCanvas, startPulse, stopPulse, startCountryPulse, stopCountryPulse, highlightCountry, clearCountryHighlight } from "./layers.js";
+import { createLayers, buildPopup, initPulseCanvas, startPulse, stopPulse, startCountryPulse, stopCountryPulse, highlightCountry, clearCountryHighlight, MUSEUM_COLORS } from "./layers.js";
 import { MUSEUMS } from "./museums.js";
 import { initFilters, applyFilters, getFilteredCount, buildWhere } from "./filters.js";
 import { updateColumns, clearColumns } from "./columns.js";
@@ -55,7 +55,8 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   view.popup.visibleElements = { collapseButton: false };
   view.popup.collapsed = false;
   view.popup.maxInlineActions = 0;
-  view.popup.autoOpenEnabled = true;
+  view.popup.autoOpenEnabled = false;
+  view.highlightOptions = { color: [0, 0, 0, 0], haloColor: [0, 0, 0, 0], fillOpacity: 0 };
   view.goTo({ position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 } });
 
   // Pulse canvas for museum selection
@@ -226,7 +227,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   }
   function resumeSpin() {
     spinnerEl.classList.remove("visible");
-    if (spinWasActive && !spinning) startSpin();
+    if (spinWasActive && !spinning && !view.popup.visible) startSpin();
   }
 
   const playIcon = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
@@ -282,10 +283,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         stopSpin();
       }
       updateSpinButton();
-      // If a museum is selected, ensure spin restarts after columns load
-      const shouldSpin = !!state.museum;
       await update();
-      if (shouldSpin && !spinning) { startSpin(); updateSpinButton(); }
     },
     null,
     (mode) => {
@@ -299,15 +297,18 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
   // --- Dashboard ---
   initDashboard(queryLayer, {
-    onCountrySelect: (country) => {
+    onCountrySelect: async (country) => {
       state.country = country;
-      update();
+      stopSpin(); updateSpinButton();
+      applyFilters(state, layers);
+      getFilteredCount(queryLayer, state).then(updateArtifactCount);
+      updateDashboard(state);
+      await flyToCountry(country);
     },
     onMuseumSelect: (museumId) => {
       state.museum = museumId;
       setMuseumFilter(museumId);
       pulseForMuseum(museumId);
-      if (museumId) startSpin(); else stopSpin();
       updateSpinButton();
       update();
     },
@@ -338,6 +339,227 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   updateSpinButton();
   update();
 
+  // --- Country popup with pie chart ---
+  let activeCountry = null;
+
+  function selectMuseumFromPopup(museumId, country) {
+    // Update museum pills UI
+    const pills = document.querySelectorAll("#museum-pills .museum-pill");
+    pills.forEach((p) => {
+      if (p.dataset.museum === museumId) p.classList.add("active");
+      else p.classList.remove("active");
+    });
+    // Update state and filters
+    state.museum = museumId;
+    setMuseumFilter(museumId);
+    pulseForMuseum(museumId);
+    applyFilters(state, layers);
+    getFilteredCount(queryLayer, state).then(updateArtifactCount);
+    updateDashboard(state);
+    // Re-open popup with updated pie
+    flyToCountry(country);
+  }
+
+  async function buildCountryPopupContent(country) {
+    // Always query ALL museums for this country (ignore museum filter for pie)
+    const countryOnly = { ...state, museum: "all", country };
+    const countryWhere = buildWhere(countryOnly);
+    const statsResult = await queryLayer.queryFeatures({
+      where: countryWhere,
+      outStatistics: [{ statisticType: "count", onStatisticField: "ObjectId", outStatisticFieldName: "cnt" }],
+      groupByFieldsForStatistics: ["museum_id"],
+      returnGeometry: false,
+    });
+
+    const museumData = statsResult.features
+      .map((f) => ({ id: f.attributes.museum_id, count: f.attributes.cnt }))
+      .filter((d) => d.id && MUSEUMS[d.id])
+      .sort((a, b) => b.count - a.count);
+    const total = museumData.reduce((s, d) => s + d.count, 0);
+
+    // Which museums are currently active
+    const activeMuseums = new Set(
+      !state.museum || state.museum === "all" ? Object.keys(MUSEUMS) :
+      Array.isArray(state.museum) ? state.museum : [state.museum]
+    );
+
+    const div = document.createElement("div");
+    div.style.cssText = "font-family:system-ui;color:#ddd;width:100%;";
+
+    // Layout: pie on left, legend on right
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:12px;";
+
+    // Donut chart
+    const size = 80;
+    const canvas = document.createElement("canvas");
+    const dpr = 2;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.cssText = `width:${size}px;height:${size}px;flex-shrink:0;cursor:pointer;`;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+
+    const cx = size / 2, cy = size / 2, radius = size / 2 - 4;
+    let startAngle = -Math.PI / 2;
+    const slices = [];
+
+    for (const d of museumData) {
+      const sliceAngle = (d.count / total) * Math.PI * 2;
+      const color = MUSEUM_COLORS[d.id] || [150, 150, 150];
+      const isActive = activeMuseums.has(d.id);
+      slices.push({ id: d.id, start: startAngle, end: startAngle + sliceAngle });
+
+      if (isActive) {
+        ctx.shadowColor = `rgba(${color.join(",")},0.4)`;
+        ctx.shadowBlur = 6;
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, startAngle, startAngle + sliceAngle);
+      ctx.closePath();
+      ctx.fillStyle = isActive ? `rgb(${color.join(",")})` : `rgba(${color.join(",")},0.2)`;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.strokeStyle = "rgba(0,0,0,0.5)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      startAngle += sliceAngle;
+    }
+
+    // Click on pie wedge → filter museum
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left - size / 2;
+      const y = e.clientY - rect.top - size / 2;
+      const dist = Math.sqrt(x * x + y * y);
+      if (dist < radius * 0.52 || dist > radius) return; // clicked center hole or outside
+      let angle = Math.atan2(y, x);
+      if (angle < -Math.PI / 2) angle += Math.PI * 2;
+      for (const s of slices) {
+        let end = s.end;
+        if (end < s.start) end += Math.PI * 2;
+        if (angle >= s.start && angle < end) {
+          selectMuseumFromPopup(s.id, country);
+          break;
+        }
+      }
+    });
+
+    // Center hole
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.52, 0, Math.PI * 2);
+    ctx.fillStyle = "#1a1a1e";
+    ctx.fill();
+
+    // Count in center
+    const activeTotal = museumData.filter(d => activeMuseums.has(d.id)).reduce((s, d) => s + d.count, 0);
+    const countStr = activeTotal.toLocaleString();
+    ctx.fillStyle = "#00E9FF";
+    const fontSize = countStr.length > 6 ? 8 : countStr.length > 4 ? 9 : 11;
+    ctx.font = `bold ${fontSize}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(countStr, cx, cy - 3);
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.font = "6px system-ui";
+    ctx.fillText("artifacts", cx, cy + 6);
+
+    row.appendChild(canvas);
+
+    // Legend column
+    const legend = document.createElement("div");
+    legend.style.cssText = "flex:1;min-width:0;";
+    for (const d of museumData) {
+      const color = MUSEUM_COLORS[d.id] || [150, 150, 150];
+      const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
+      const isActive = activeMuseums.has(d.id);
+      const item = document.createElement("div");
+      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;border-radius:3px;transition:background 0.12s;opacity:${isActive ? 1 : 0.35};`;
+      item.addEventListener("mouseenter", () => { item.style.background = "rgba(255,255,255,0.05)"; });
+      item.addEventListener("mouseleave", () => { item.style.background = ""; });
+      item.addEventListener("click", () => selectMuseumFromPopup(d.id, country));
+
+      const dot = document.createElement("span");
+      dot.style.cssText = `width:6px;height:6px;border-radius:50%;background:rgb(${color.join(",")});${isActive ? `box-shadow:0 0 4px rgba(${color.join(",")},0.5);` : ""}flex-shrink:0;`;
+
+      const name = document.createElement("span");
+      name.style.cssText = "font-size:11px;color:#bbb;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      name.textContent = MUSEUMS[d.id].name;
+
+      const count = document.createElement("span");
+      count.style.cssText = "font-size:10px;color:#666;white-space:nowrap;font-variant-numeric:tabular-nums;";
+      count.textContent = `${d.count.toLocaleString()} · ${pct}%`;
+
+      item.appendChild(dot);
+      item.appendChild(name);
+      item.appendChild(count);
+      legend.appendChild(item);
+    }
+    row.appendChild(legend);
+    div.appendChild(row);
+
+    // Time range
+    try {
+      const timeResult = await queryLayer.queryFeatures({
+        where: buildWhere({ ...state, country }) + " AND year_start IS NOT NULL",
+        outStatistics: [
+          { statisticType: "min", onStatisticField: "year_start", outStatisticFieldName: "minYear" },
+          { statisticType: "max", onStatisticField: "year_end", outStatisticFieldName: "maxYear" },
+        ],
+        returnGeometry: false,
+      });
+      const minY = timeResult.features[0]?.attributes.minYear;
+      const maxY = timeResult.features[0]?.attributes.maxYear;
+      if (minY != null && maxY != null) {
+        const fmtYear = (y) => y < 0 ? `${Math.abs(y).toLocaleString()} BC` : `${y} AD`;
+        const timeRow = document.createElement("div");
+        timeRow.style.cssText = "text-align:center;font-size:10px;color:#666;margin-bottom:10px;padding:4px 0;border-top:1px solid rgba(255,255,255,0.04);";
+        timeRow.textContent = `${fmtYear(minY)} – ${fmtYear(maxY)}`;
+        div.appendChild(timeRow);
+      }
+    } catch {}
+
+    // Explore button
+    const exploreBtn = document.createElement("button");
+    exploreBtn.textContent = "Explore Artifacts →";
+    exploreBtn.style.cssText = "padding:9px 16px;background:rgba(0,233,255,0.08);border:1px solid rgba(0,233,255,0.25);border-radius:6px;color:#00E9FF;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;width:100%;transition:all 0.15s;letter-spacing:0.02em;";
+    exploreBtn.onmouseenter = () => { exploreBtn.style.background = "rgba(0,233,255,0.18)"; exploreBtn.style.borderColor = "rgba(0,233,255,0.5)"; };
+    exploreBtn.onmouseleave = () => { exploreBtn.style.background = "rgba(0,233,255,0.08)"; exploreBtn.style.borderColor = "rgba(0,233,255,0.25)"; };
+    exploreBtn.addEventListener("click", () => {
+      view.closePopup();
+      openSidebar(country);
+    });
+    div.appendChild(exploreBtn);
+
+    return div;
+  }
+
+  async function flyToCountry(country) {
+    let centroid = null;
+    try {
+      const resp = await fetch(import.meta.env.BASE_URL + "data/centroids.json");
+      const centroids = await resp.json();
+      centroid = centroids[country];
+    } catch {}
+
+    activeCountry = country;
+    highlightCountry(country, layers);
+
+    if (centroid) {
+      view.popup.dockEnabled = false;
+      await view.goTo({ center: [centroid.lng, centroid.lat], zoom: 5 }, { duration: 1000 });
+
+      const content = await buildCountryPopupContent(country);
+      view.openPopup({
+        title: country,
+        location: { x: centroid.lng, y: centroid.lat, spatialReference: { wkid: 4326 } },
+        content,
+      });
+    }
+  }
+
   // --- Click handling ---
   view.on("click", async (event) => {
     const hit = await view.hitTest(event, {
@@ -355,10 +577,10 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       update();
     } else if (graphic.layer === arcLayer && graphic.attributes?.country) {
       stopSpin(); updateSpinButton();
-      openSidebar(graphic.attributes.country, null, graphic.attributes.museum_id);
+      flyToCountry(graphic.attributes.country);
     } else if (graphic.layer === columnLayer && graphic.attributes?.country) {
       stopSpin(); updateSpinButton();
-      openSidebar(graphic.attributes.country, null, graphic.attributes.museum_id);
+      flyToCountry(graphic.attributes.country);
     } else if (graphic.layer === highlightLayer) {
       stopSpin(); updateSpinButton();
       const atlasName = graphic.attributes.COUNTRY;
@@ -373,6 +595,9 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     (feature) => {
       if (feature?.attributes?.artifact_id) {
         stopSpin(); updateSpinButton();
+        // Don't re-render sidebar if it's already open on this country
+        const sidebar = document.getElementById("sidebar");
+        if (sidebar?.classList.contains("open")) return;
         openSidebar(feature.attributes.country, feature.attributes.artifact_id);
       }
     }
@@ -386,9 +611,11 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         const dashEl = document.getElementById("dashboard");
         if (dashEl) dashEl.classList.remove("collapsed");
         view.popup.dockEnabled = false;
-        // Clear country highlight + pulse
+        // Only clear darken mask if no country is actively selected
         stopCountryPulse();
-        clearCountryHighlight(layers);
+        if (!activeCountry) {
+          clearCountryHighlight(layers);
+        }
       }
     }
   );
@@ -407,6 +634,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         feature.popupTemplate = buildPopup();
         // Zoom to country centroid, not individual artifact
         const country = feature.attributes.country;
+        activeCountry = country;
         let centroid = null;
         try {
           const resp = await fetch(import.meta.env.BASE_URL + "data/centroids.json");
@@ -451,6 +679,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         }
       }
     });
+  });
+
+  // --- Sidebar close → clear country highlight ---
+  document.getElementById("sidebar-close")?.addEventListener("click", () => {
+    activeCountry = null;
+    clearCountryHighlight(layers);
+    stopCountryPulse();
   });
 
   // --- Time slider ---

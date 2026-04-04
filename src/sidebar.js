@@ -31,12 +31,20 @@ export function initSidebar(layer) {
     </div>
     <div id="sidebar-search">
       <input type="text" id="sidebar-search-input" placeholder="Search artifacts..." autocomplete="off" />
+      <button id="sidebar-search-clear" aria-label="Clear search">&times;</button>
     </div>
     <div id="sidebar-content"></div>
   `;
   document.body.appendChild(sidebarEl);
 
   document.getElementById("sidebar-close").addEventListener("click", closeSidebar);
+
+  // Clear search button
+  document.getElementById("sidebar-search-clear").addEventListener("click", () => {
+    const input = document.getElementById("sidebar-search-input");
+    input.value = "";
+    renderSidebar();
+  });
 
   // Search with debounce
   let searchTimer = null;
@@ -69,9 +77,13 @@ export function setTimeFilter(lo, hi) {
 
 export function openSidebar(countryName, highlightId, museumOverride) {
   currentCountry = countryName;
+  // Only clear search and re-render if not mid-search
   const searchInput = document.getElementById("sidebar-search-input");
-  if (searchInput) searchInput.value = "";
-  renderSidebar(highlightId, museumOverride);
+  const isSearching = searchInput && searchInput.value.trim().length >= 2;
+  if (!isSearching) {
+    if (searchInput) searchInput.value = "";
+    renderSidebar(highlightId, museumOverride);
+  }
   sidebarEl.classList.add("open");
 }
 

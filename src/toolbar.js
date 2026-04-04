@@ -24,7 +24,7 @@ export function updateCountryCount(count) {
  * @param {Function} onCountryChange — unused
  * @param {Function} onViewModeChange — ("columns" | "particles" | "images")
  */
-export function initToolbar(onMuseumChange, onCountryChange, onViewModeChange) {
+export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) {
   const wrapper = document.createElement("div");
   wrapper.id = "toolbar-left";
 
@@ -152,18 +152,14 @@ function createInfoModal() {
     <div class="info-panel">
       <button class="info-close">&times;</button>
       <h1 class="info-title">Artifact Explorer</h1>
-      <p class="info-tagline">If cultural relics could return home</p>
-      <div class="info-body">
-        <p>An interactive 3D globe visualizing artifacts held in the world's major museums, mapped back to their countries of origin.</p>
-        <p>Explore over <strong>270,000 artifacts</strong> from three of the world's largest collections:</p>
-        <div class="info-museums">
-          <a class="info-museum" style="--mc: rgb(50,70,170)" href="https://www.britishmuseum.org/collection" target="_blank">British Museum</a>
-          <a class="info-museum" style="--mc: rgb(0,160,190)" href="https://collections.louvre.fr" target="_blank">Louvre</a>
-          <a class="info-museum" style="--mc: rgb(150,50,150)" href="https://metmuseum.github.io" target="_blank">The Metropolitan Museum of Art</a>
-        </div>
-        <p class="info-note">This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are shown &mdash; representing a fraction of each museum's total holdings.</p>
-        <p class="info-note">Toggle museums, filter by time period, and click countries or artifacts to explore the stories of where these objects came from.</p>
+      <p class="info-subtitle">An interactive 3D globe visualizing over <strong>270,000 artifacts</strong> held in the world's major museums, mapped back to their countries of origin.</p>
+      <p class="info-subtitle">Select a country to see which museums hold its cultural heritage and explore individual pieces from each collection.</p>
+      <div class="info-museums">
+        <a class="info-museum" style="--mc: rgb(50,70,170)" href="https://www.britishmuseum.org/collection" target="_blank">The British Museum</a>
+        <a class="info-museum" style="--mc: rgb(0,160,190)" href="https://collections.louvre.fr" target="_blank">The Louvre Museum</a>
+        <a class="info-museum" style="--mc: rgb(150,50,150)" href="https://metmuseum.github.io" target="_blank">The Metropolitan Museum of Art</a>
       </div>
+      <p class="info-note">Partial collection. Only artifacts with images and identifiable origins are shown.</p>
       <div class="info-footer">
         <label class="info-dismiss"><input type="checkbox" id="info-dismiss-check" /> Don't show again</label>
         <a class="info-github" href="https://github.com/b-connolly/ArtifactExplorer" target="_blank">
