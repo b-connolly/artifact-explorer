@@ -59,7 +59,3 @@ npm run build
 - [The Met Open Access](https://metmuseum.github.io)
 
 This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are included, representing a fraction of each museum's total holdings.
-
-## License
-
-MIT
