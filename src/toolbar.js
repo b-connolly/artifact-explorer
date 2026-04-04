@@ -9,6 +9,10 @@ import { MUSEUM_COLORS } from "./layers.js";
 
 let countEl = null;
 let countryCountEl = null;
+let filterBarEl = null;
+let onResetMuseum = null;
+let onResetCountry = null;
+let onResetTime = null;
 
 export function updateArtifactCount(count) {
   if (countEl) countEl.textContent = count.toLocaleString();
@@ -16,6 +20,68 @@ export function updateArtifactCount(count) {
 
 export function updateCountryCount(count) {
   if (countryCountEl) countryCountEl.textContent = count.toLocaleString();
+}
+
+export function updateFilterBar(state) {
+  if (!filterBarEl) return;
+  filterBarEl.innerHTML = "";
+
+  const hasMuseum = state.museum && state.museum !== "all" ;
+  const hasCountry = !!state.country;
+  const hasRegion = !!state.regionCountries?.length;
+  const hasTime = !!state.timeRange;
+  const hasAny = hasMuseum || hasCountry || hasRegion || hasTime;
+
+  if (!hasAny) {
+    filterBarEl.style.display = "none";
+    return;
+  }
+  filterBarEl.style.display = "flex";
+
+  if (hasMuseum) {
+    const label = Array.isArray(state.museum)
+      ? state.museum.map(id => MUSEUMS[id]?.name || id).join(", ")
+      : MUSEUMS[state.museum]?.name || state.museum;
+    addChip(label, onResetMuseum);
+  }
+
+  if (hasCountry) {
+    addChip(state.country, onResetCountry);
+  } else if (hasRegion) {
+    addChip("Region filter", onResetCountry);
+  }
+
+  if (hasTime) {
+    const fmtY = (y) => y < 0 ? `${Math.abs(y).toLocaleString()} BC` : `${y} AD`;
+    addChip(`${fmtY(state.timeRange.lo)} – ${fmtY(state.timeRange.hi)}`, onResetTime);
+  }
+
+  // Reset all
+  if ([hasMuseum, hasCountry || hasRegion, hasTime].filter(Boolean).length > 1) {
+    const resetAll = document.createElement("button");
+    resetAll.className = "filter-chip filter-reset-all";
+    resetAll.textContent = "Reset all";
+    resetAll.addEventListener("click", () => {
+      if (onResetAll) onResetAll();
+    });
+    filterBarEl.appendChild(resetAll);
+  }
+
+  function addChip(label, onClear) {
+    const chip = document.createElement("div");
+    chip.className = "filter-chip";
+    const text = document.createElement("span");
+    text.textContent = label;
+    chip.appendChild(text);
+    if (onClear) {
+      const x = document.createElement("button");
+      x.className = "filter-chip-x";
+      x.textContent = "×";
+      x.addEventListener("click", (e) => { e.stopPropagation(); onClear(); });
+      chip.appendChild(x);
+    }
+    filterBarEl.appendChild(chip);
+  }
 }
 
 /**
@@ -127,12 +193,35 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   infoBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="17" text-anchor="middle" font-size="14" font-weight="700" fill="currentColor" font-family="Georgia,serif">i</text></svg>`;
   infoBtn.addEventListener("click", () => toggleInfoSplash());
 
+  // --- Legend toggle ---
+  const legendToggle = document.createElement("button");
+  legendToggle.id = "legend-toggle";
+  legendToggle.title = "Toggle legend";
+  legendToggle.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="4" rx="1" fill="currentColor" opacity="0.4"/><line x1="13" y1="5" x2="21" y2="5"/><rect x="3" y="10" width="7" height="4" rx="1" fill="currentColor" opacity="0.6"/><line x1="13" y1="12" x2="21" y2="12"/><rect x="3" y="17" width="7" height="4" rx="1" fill="currentColor" opacity="0.8"/><line x1="13" y1="19" x2="21" y2="19"/></svg>`;
+  legendToggle.addEventListener("click", () => {
+    let panel = document.getElementById("legend-panel");
+    if (!panel) {
+      panel = createLegendPanel(onMuseumChange);
+      document.body.appendChild(panel);
+      requestAnimationFrame(() => panel.classList.add("visible"));
+    } else {
+      panel.classList.toggle("visible");
+    }
+  });
+
+  // --- Filter bar ---
+  filterBarEl = document.createElement("div");
+  filterBarEl.id = "filter-bar";
+  filterBarEl.style.display = "none";
+
   wrapper.appendChild(countWrapper);
   wrapper.appendChild(countryWrapper);
   wrapper.appendChild(dashToggle);
-  wrapper.appendChild(infoBtn);
+  wrapper.appendChild(legendToggle);
   document.body.appendChild(wrapper);
+  document.body.appendChild(filterBarEl);
   document.body.appendChild(museumBar);
+  document.body.appendChild(infoBtn);
 
   // --- Spin toggle (bottom-right, standalone) ---
   const spinToggle = document.createElement("button");
@@ -140,6 +229,67 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   spinToggle.title = "Toggle globe spin";
   spinToggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
   document.body.appendChild(spinToggle);
+}
+
+let onResetAll = null;
+
+export function registerResetCallbacks(resetMuseum, resetCountry, resetTime, resetAll) {
+  onResetMuseum = resetMuseum;
+  onResetCountry = resetCountry;
+  onResetTime = resetTime;
+  onResetAll = resetAll;
+}
+
+// --- Legend panel ---
+
+function createLegendPanel(onMuseumChange) {
+  const panel = document.createElement("div");
+  panel.id = "legend-panel";
+  panel.innerHTML = `
+    <div class="legend-section">
+      <div class="legend-heading">Museums</div>
+      <div class="legend-item legend-museum-item" data-museum="british_museum">
+        <span class="legend-dot" style="background:rgb(50,70,170)"></span>
+        <span>British Museum</span>
+      </div>
+      <div class="legend-item legend-museum-item" data-museum="louvre">
+        <span class="legend-dot" style="background:rgb(0,160,190)"></span>
+        <span>Louvre</span>
+      </div>
+      <div class="legend-item legend-museum-item" data-museum="met">
+        <span class="legend-dot" style="background:rgb(150,50,150)"></span>
+        <span>The Met</span>
+      </div>
+    </div>
+    <div class="legend-section legend-note">
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <rect x="2" y="2" width="4" height="14" rx="1" fill="rgba(50,70,170,0.7)"/>
+        <rect x="7" y="6" width="4" height="10" rx="1" fill="rgba(0,160,190,0.7)"/>
+        <rect x="12" y="10" width="3" height="6" rx="1" fill="rgba(150,50,150,0.7)"/>
+      </svg>
+      Column height represents artifact count
+    </div>
+    <div class="legend-section legend-note">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 14 Q8 2 14 8" stroke="rgba(0,233,255,0.6)" stroke-width="1.5" fill="none"/></svg>
+      Arcs trace artifacts from country of origin to museum
+    </div>
+  `;
+
+  // Click museum rows to filter
+  panel.querySelectorAll(".legend-museum-item").forEach((item) => {
+    item.addEventListener("click", () => {
+      const museumId = item.dataset.museum;
+      // Update pills
+      const pills = document.querySelectorAll("#museum-pills .museum-pill");
+      pills.forEach((p) => {
+        if (p.dataset.museum === museumId) p.classList.add("active");
+        else p.classList.remove("active");
+      });
+      onMuseumChange([museumId]);
+    });
+  });
+
+  return panel;
 }
 
 // --- Info splash modal ---

@@ -21,7 +21,7 @@ let dashboardEl = null;
 let lastMuseumWhere = null;
 
 // --- Continent mapping for heatmap ---
-const CONTINENT_MAP = {
+export const CONTINENT_MAP = {
   "Egypt": "Africa", "Iraq": "Middle East", "Iran": "Middle East",
   "Turkey": "Middle East", "Syria": "Middle East", "Lebanon": "Middle East",
   "Jordan": "Middle East", "Israel": "Middle East", "Cyprus": "Middle East",
@@ -162,6 +162,38 @@ export function initDashboard(layer, cbs) {
       dragStart = null;
       isDragging = false;
       if (selectionDiv) { selectionDiv.remove(); selectionDiv = null; }
+    });
+  }
+
+  // Flow diagram click handler
+  const flowCanvas = document.getElementById("dash-flow-canvas");
+  if (flowCanvas) {
+    flowCanvas.addEventListener("click", (e) => {
+      if (!flowCanvas._clickRegions || !flowCanvas._flowData) return;
+      const rect = flowCanvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (276 / rect.width);
+      const y = (e.clientY - rect.top) * (160 / rect.height);
+      const { rPos, mPos, leftX, rightX } = flowCanvas._clickRegions;
+
+      // Check region clicks (left side)
+      if (x < leftX + 20) {
+        for (const rp of rPos) {
+          if (y >= rp.y && y <= rp.y + rp.h + 4) {
+            if (callbacks.onRegionSelect) callbacks.onRegionSelect(rp.id);
+            return;
+          }
+        }
+      }
+
+      // Check museum clicks (right side)
+      if (x > rightX - 20) {
+        for (const mp of mPos) {
+          if (y >= mp.y && y <= mp.y + mp.h + 4) {
+            if (callbacks.onMuseumSelect) callbacks.onMuseumSelect(mp.id);
+            return;
+          }
+        }
+      }
     });
   }
 }
@@ -481,8 +513,9 @@ function renderHeatmap(data) {
 
   if (!museums.length || !regions.length) return;
 
-  // Store data for animation
+  // Store data for animation and click handling
   canvas._flowData = { grid, museums, regions, museumTotals, regionTotals };
+  canvas.style.cursor = "pointer";
 
   // Animate in
   if (flowAnimFrame) cancelAnimationFrame(flowAnimFrame);
@@ -624,6 +657,9 @@ function drawFlow(canvas, progress) {
       drawLabel(ctx, label, rightX + 9, mp.y + mp.h / 2, "left", alpha);
     }
   }
+
+  // Store click regions for hit testing
+  canvas._clickRegions = { rPos, mPos, leftX, rightX, W };
 }
 
 function drawLabel(ctx, text, x, y, align, alpha) {

@@ -322,6 +322,7 @@ const ATLAS_NAME_MAP = {
 };
 
 function highlightCountry(countryName, layers) {
+  if (!countryName) return;
   const atlasName = ATLAS_NAME_MAP[countryName] || countryName;
   const escaped = atlasName.replace(/'/g, "''");
 
@@ -409,6 +410,21 @@ export function createLayers(view) {
     title: "Country Highlights",
   });
 
+  // Country interaction layer — subtle but hittable for click targets
+  const countryClickLayer = new FeatureLayer({
+    url: COUNTRIES_URL,
+    renderer: new SimpleRenderer({
+      symbol: new SimpleFillSymbol({
+        color: [255, 255, 255, 0.05],
+        outline: { color: [255, 255, 255, 0.08], width: 1 },
+      }),
+    }),
+    visible: true,
+    popupEnabled: false,
+    elevationInfo: { mode: "on-the-ground" },
+    title: "Country Click Targets",
+  });
+
   // Museum pins
   const museumLayer = createMuseumPinLayer();
 
@@ -416,6 +432,7 @@ export function createLayers(view) {
   view.environment.lighting.glow = new Glow({ intensity: 0.5 });
 
   // Add layers in draw order (bottom → top)
+  // countryClickLayer on top of columns so it receives clicks
   view.map.addMany([
     darkenLayer,
     highlightLayer,
@@ -424,6 +441,7 @@ export function createLayers(view) {
     columnLayer,
     thumbLayer,
     arcLayer,
+    countryClickLayer,
     museumLayer,
   ]);
 
@@ -435,6 +453,7 @@ export function createLayers(view) {
     arcLayer,
     darkenLayer,
     highlightLayer,
+    countryClickLayer,
     museumLayer,
   };
 }

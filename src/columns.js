@@ -13,7 +13,6 @@ import Graphic from "@arcgis/core/Graphic.js";
 import Point from "@arcgis/core/geometry/Point.js";
 import PointSymbol3D from "@arcgis/core/symbols/PointSymbol3D.js";
 import ObjectSymbol3DLayer from "@arcgis/core/symbols/ObjectSymbol3DLayer.js";
-import { MUSEUMS } from "./museums.js";
 import { MUSEUM_COLORS } from "./layers.js";
 import { getQueryWhere } from "./filters.js";
 
@@ -335,7 +334,7 @@ export async function updateColumns(queryLayer, state, layers) {
           total: data.total, museums: data.museums,
           dominant_museum: data.dominant,
         },
-        popupTemplate: buildColumnPopup(),
+        popupEnabled: false,
       }));
     }
   }
@@ -351,37 +350,3 @@ export function clearColumns(layers) {
   layers.columnLayer.removeAll();
 }
 
-
-
-function buildColumnPopup() {
-  return {
-    title: "{country}",
-    content: (event) => {
-      const a = event.graphic.attributes;
-      const div = document.createElement("div");
-      div.style.cssText = "font-family:system-ui;color:#ddd;";
-
-      let rows = "";
-      const sorted = Object.entries(a.museums).sort((x, y) => y[1] - x[1]);
-      for (const [mid, cnt] of sorted) {
-        const museum = MUSEUMS[mid];
-        const c = MUSEUM_COLORS[mid] || [200, 60, 50];
-        rows += `
-          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="width:8px;height:8px;border-radius:50%;background:rgb(${c.join(",")})"></span>
-              <span style="font-size:12px">${museum?.name || mid}</span>
-            </div>
-            <span style="font-size:12px;color:#aaa">${cnt.toLocaleString()}</span>
-          </div>`;
-      }
-
-      div.innerHTML = `
-        <div style="font-size:20px;font-weight:600;color:#00E9FF;margin-bottom:4px">${a.total.toLocaleString()} artifacts</div>
-        <div style="font-size:11px;color:#888;margin-bottom:10px">from ${sorted.length} museum${sorted.length !== 1 ? "s" : ""}</div>
-        ${rows}
-      `;
-      return div;
-    },
-  };
-}

@@ -20,10 +20,10 @@ import { initFilters, applyFilters, getFilteredCount, buildWhere } from "./filte
 import { updateColumns, clearColumns } from "./columns.js";
 import { updateArcs, clearArcs } from "./arcs.js";
 import { loadThumbnails, clearThumbnails } from "./thumbnails.js";
-import { initSidebar, openSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
-import { initToolbar, updateArtifactCount, updateCountryCount, showImageProgress, hideImageProgress } from "./toolbar.js";
+import { initSidebar, openSidebar, closeSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
+import { initToolbar, updateArtifactCount, updateCountryCount, showImageProgress, hideImageProgress, updateFilterBar, registerResetCallbacks } from "./toolbar.js";
 import { initTimeSlider, setTimeRange, getIncludeUndated } from "./time-slider.js";
-import { initDashboard, updateDashboard } from "./dashboard.js";
+import { initDashboard, updateDashboard, CONTINENT_MAP } from "./dashboard.js";
 
 // --- OAuth ---
 const oAuthInfo = new OAuthInfo({
@@ -64,7 +64,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
   // Create all layers
   const layers = createLayers(view);
-  const { sceneLayer, queryLayer, thumbLayer, columnLayer, arcLayer, highlightLayer, museumLayer } = layers;
+  const { sceneLayer, queryLayer, thumbLayer, columnLayer, arcLayer, countryClickLayer, museumLayer } = layers;
 
   // Init filter system (gets sceneLayerView for client-side filtering)
   await queryLayer.load();
@@ -170,7 +170,8 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       });
     }
     resumeSpin();
-    updateDashboard(state);
+    updateDashboard(state); updateFilterBar(state);
+    updateFilterBar(state);
   }
 
   function pulseForMuseum(museumId) {
@@ -228,6 +229,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   function resumeSpin() {
     spinnerEl.classList.remove("visible");
     if (spinWasActive && !spinning && !view.popup.visible) startSpin();
+    updateSpinButton();
   }
 
   const playIcon = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
@@ -299,18 +301,59 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   initDashboard(queryLayer, {
     onCountrySelect: async (country) => {
       state.country = country;
+      state.regionCountries = null;
       stopSpin(); updateSpinButton();
       applyFilters(state, layers);
       getFilteredCount(queryLayer, state).then(updateArtifactCount);
-      updateDashboard(state);
+      updateDashboard(state); updateFilterBar(state);
       await flyToCountry(country);
     },
     onMuseumSelect: (museumId) => {
       state.museum = museumId;
+      state.regionCountries = null;
       setMuseumFilter(museumId);
       pulseForMuseum(museumId);
       updateSpinButton();
       update();
+    },
+    onRegionSelect: async (regionName) => {
+      const REGION_CENTERS = {
+        "Middle East": { lng: 45, lat: 30, zoom: 4 },
+        "Asia": { lng: 100, lat: 30, zoom: 3 },
+        "Europe": { lng: 15, lat: 48, zoom: 4 },
+        "Americas": { lng: -85, lat: 15, zoom: 3 },
+        "Africa": { lng: 20, lat: 5, zoom: 3 },
+      };
+
+      // Get countries in this region from CONTINENT_MAP
+      const countries = Object.entries(CONTINENT_MAP)
+        .filter(([, region]) => region === regionName)
+        .map(([country]) => country);
+      const center = REGION_CENTERS[regionName];
+      if (!countries.length || !center) return;
+
+      stopSpin(); updateSpinButton();
+
+      // Store region countries on state so buildWhere can use it
+      state.regionCountries = countries;
+      state.country = null;
+      applyFilters(state, layers);
+      getFilteredCount(queryLayer, state).then(updateArtifactCount);
+      queryLayer.queryFeatures({
+        where: buildWhere(state),
+        outStatistics: [{ statisticType: "count", onStatisticField: "ObjectId", outStatisticFieldName: "cnt" }],
+        groupByFieldsForStatistics: ["country"],
+        returnGeometry: false,
+      }).then((r) => updateCountryCount(r.features.length));
+      updateDashboard(state); updateFilterBar(state);
+
+      // Update columns
+      if (state.viewMode === "columns" && state.museum) {
+        updateColumns(queryLayer, state, layers);
+      }
+
+      // Zoom to region
+      await view.goTo({ center: [center.lng, center.lat], zoom: center.zoom }, { duration: 1500 });
     },
     onTimeSelect: (lo, hi) => {
       state.timeRange = (lo != null && hi != null) ? { lo, hi } : null;
@@ -327,10 +370,10 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         if (state.museum !== "all") updateArcs(queryLayer, state, layers);
       }
       getFilteredCount(queryLayer, state).then(updateArtifactCount);
-      updateDashboard(state);
+      updateDashboard(state); updateFilterBar(state);
     },
   });
-  updateDashboard(state);
+  updateDashboard(state); updateFilterBar(state);
 
   // Start with all museums active — spin + pulse + columns
   setMuseumFilter("all");
@@ -338,6 +381,69 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   startSpin();
   updateSpinButton();
   update();
+
+  // --- Reset callbacks for filter bar ---
+  registerResetCallbacks(
+    // Reset museum
+    () => {
+      state.museum = "all";
+      setMuseumFilter("all");
+      pulseForMuseum("all");
+      const pills = document.querySelectorAll("#museum-pills .museum-pill");
+      pills.forEach((p) => p.classList.add("active"));
+      updateSpinButton();
+      update();
+    },
+    // Reset country/region
+    () => {
+      state.country = null;
+      state.regionCountries = null;
+      activeCountry = null;
+      clearCountryHighlight(layers);
+      stopCountryPulse();
+      closeSidebar();
+      view.closePopup();
+      update();
+    },
+    // Reset time
+    () => {
+      state.timeRange = null;
+      setTimeRange(-300000, 2100);
+      setTimeFilter(null, null);
+      update();
+    },
+    // Reset all
+    async () => {
+      // Clear all filters
+      state.museum = "all";
+      state.country = null;
+      state.regionCountries = null;
+      state.timeRange = null;
+      activeCountry = null;
+
+      // Reset UI
+      setMuseumFilter("all");
+      pulseForMuseum("all");
+      setTimeRange(-300000, 2100);
+      setTimeFilter(null, null);
+      clearCountryHighlight(layers);
+      stopCountryPulse();
+      closeSidebar();
+      view.closePopup();
+      const pills = document.querySelectorAll("#museum-pills .museum-pill");
+      pills.forEach((p) => p.classList.add("active"));
+
+      // Zoom out to initial view
+      await view.goTo({
+        position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 }
+      }, { duration: 1500 });
+
+      // Start spin
+      startSpin();
+      updateSpinButton();
+      update();
+    }
+  );
 
   // --- Country popup with pie chart ---
   let activeCountry = null;
@@ -355,7 +461,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     pulseForMuseum(museumId);
     applyFilters(state, layers);
     getFilteredCount(queryLayer, state).then(updateArtifactCount);
-    updateDashboard(state);
+    updateDashboard(state); updateFilterBar(state);
     // Re-open popup with updated pie
     flyToCountry(country);
   }
@@ -391,7 +497,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     row.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:12px;";
 
     // Donut chart
-    const size = 80;
+    const size = 110;
     const canvas = document.createElement("canvas");
     const dpr = 2;
     canvas.width = size * dpr;
@@ -457,69 +563,63 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     const activeTotal = museumData.filter(d => activeMuseums.has(d.id)).reduce((s, d) => s + d.count, 0);
     const countStr = activeTotal.toLocaleString();
     ctx.fillStyle = "#00E9FF";
-    const fontSize = countStr.length > 6 ? 8 : countStr.length > 4 ? 9 : 11;
+    const fontSize = countStr.length > 6 ? 11 : countStr.length > 4 ? 13 : 15;
     ctx.font = `bold ${fontSize}px system-ui`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(countStr, cx, cy - 3);
+    ctx.fillText(countStr, cx, cy - 4);
     ctx.fillStyle = "rgba(255,255,255,0.3)";
-    ctx.font = "6px system-ui";
-    ctx.fillText("artifacts", cx, cy + 6);
+    ctx.font = "8px system-ui";
+    ctx.fillText("artifacts", cx, cy + 9);
 
     row.appendChild(canvas);
 
-    // Legend column
+    // Legend column — museum bars with prominent percentages
     const legend = document.createElement("div");
-    legend.style.cssText = "flex:1;min-width:0;";
+    legend.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;";
     for (const d of museumData) {
       const color = MUSEUM_COLORS[d.id] || [150, 150, 150];
       const pct = total > 0 ? Math.round((d.count / total) * 100) : 0;
       const isActive = activeMuseums.has(d.id);
+      const rgb = color.join(",");
+
       const item = document.createElement("div");
-      item.style.cssText = `display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;border-radius:3px;transition:background 0.12s;opacity:${isActive ? 1 : 0.35};`;
-      item.addEventListener("mouseenter", () => { item.style.background = "rgba(255,255,255,0.05)"; });
+      item.style.cssText = `cursor:pointer;border-radius:4px;padding:3px 6px;transition:background 0.12s;opacity:${isActive ? 1 : 0.3};position:relative;overflow:hidden;`;
+      item.addEventListener("mouseenter", () => { item.style.background = `rgba(${rgb},0.12)`; });
       item.addEventListener("mouseleave", () => { item.style.background = ""; });
       item.addEventListener("click", () => selectMuseumFromPopup(d.id, country));
 
-      const dot = document.createElement("span");
-      dot.style.cssText = `width:6px;height:6px;border-radius:50%;background:rgb(${color.join(",")});${isActive ? `box-shadow:0 0 4px rgba(${color.join(",")},0.5);` : ""}flex-shrink:0;`;
+      // Background bar fill
+      const bar = document.createElement("div");
+      bar.style.cssText = `position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:rgba(${rgb},0.12);border-radius:5px;pointer-events:none;`;
+      item.appendChild(bar);
+
+      // Top row: museum name + big percentage
+      const topRow = document.createElement("div");
+      topRow.style.cssText = "display:flex;align-items:baseline;justify-content:space-between;position:relative;";
 
       const name = document.createElement("span");
-      name.style.cssText = "font-size:11px;color:#bbb;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      name.style.cssText = `font-size:11px;color:rgb(${rgb});font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
       name.textContent = MUSEUMS[d.id].name;
 
-      const count = document.createElement("span");
-      count.style.cssText = "font-size:10px;color:#666;white-space:nowrap;font-variant-numeric:tabular-nums;";
-      count.textContent = `${d.count.toLocaleString()} · ${pct}%`;
+      const pctEl = document.createElement("span");
+      pctEl.style.cssText = `font-size:13px;font-weight:700;color:rgb(${rgb});letter-spacing:-0.02em;font-variant-numeric:tabular-nums;`;
+      pctEl.textContent = `${pct}%`;
 
-      item.appendChild(dot);
-      item.appendChild(name);
-      item.appendChild(count);
+      topRow.appendChild(name);
+      topRow.appendChild(pctEl);
+      item.appendChild(topRow);
+
+      // Bottom row: artifact count
+      const countEl = document.createElement("div");
+      countEl.style.cssText = "font-size:10px;color:rgba(255,255,255,0.4);font-variant-numeric:tabular-nums;position:relative;margin-top:1px;";
+      countEl.textContent = `${d.count.toLocaleString()} artifacts`;
+      item.appendChild(countEl);
+
       legend.appendChild(item);
     }
     row.appendChild(legend);
     div.appendChild(row);
-
-    // Time range
-    try {
-      const timeResult = await queryLayer.queryFeatures({
-        where: buildWhere({ ...state, country }) + " AND year_start IS NOT NULL",
-        outStatistics: [
-          { statisticType: "min", onStatisticField: "year_start", outStatisticFieldName: "minYear" },
-          { statisticType: "max", onStatisticField: "year_end", outStatisticFieldName: "maxYear" },
-        ],
-        returnGeometry: false,
-      });
-      const minY = timeResult.features[0]?.attributes.minYear;
-      const maxY = timeResult.features[0]?.attributes.maxYear;
-      if (minY != null && maxY != null) {
-        const fmtYear = (y) => y < 0 ? `${Math.abs(y).toLocaleString()} BC` : `${y} AD`;
-        const timeRow = document.createElement("div");
-        timeRow.style.cssText = "text-align:center;font-size:10px;color:#666;margin-bottom:10px;padding:4px 0;border-top:1px solid rgba(255,255,255,0.04);";
-        timeRow.textContent = `${fmtYear(minY)} – ${fmtYear(maxY)}`;
-        div.appendChild(timeRow);
-      }
-    } catch {}
 
     // Explore button
     const exploreBtn = document.createElement("button");
@@ -549,7 +649,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
     if (centroid) {
       view.popup.dockEnabled = false;
-      await view.goTo({ center: [centroid.lng, centroid.lat], zoom: 5 }, { duration: 1000 });
+
+      await view.goTo({
+        center: [centroid.lng, centroid.lat - 3],
+        zoom: 5.4,
+        heading: 0,
+        tilt: 28,
+      }, { duration: 1500 });
 
       const content = await buildCountryPopupContent(country);
       view.openPopup({
@@ -561,31 +667,44 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   }
 
   // --- Click handling ---
-  view.on("click", async (event) => {
-    const hit = await view.hitTest(event, {
-      include: [museumLayer, thumbLayer, sceneLayer, arcLayer, columnLayer, highlightLayer],
-    });
-    if (!hit.results.length) return;
-    const graphic = hit.results[0].graphic;
+  const reverseCountryMap = { "United States": "United States of America", "Turkiye": "Turkey", "Russian Federation": "Russia", "South Korea": "Korea", "Congo DRC": "Democratic Republic of the Congo", "Congo": "Republic of the Congo" };
 
-    if (graphic.layer === museumLayer) {
-      const mid = graphic.attributes.museum_id;
-      document.getElementById("museum-select").value = mid;
+  view.on("click", async (event) => {
+    // First check for museum pins (highest priority)
+    const pinHit = await view.hitTest(event, { include: [museumLayer] });
+    if (pinHit.results.length) {
+      const mid = pinHit.results[0].graphic.attributes.museum_id;
       state.museum = mid;
       setMuseumFilter(mid);
       pulseForMuseum(mid);
       update();
-    } else if (graphic.layer === arcLayer && graphic.attributes?.country) {
-      stopSpin(); updateSpinButton();
-      flyToCountry(graphic.attributes.country);
-    } else if (graphic.layer === columnLayer && graphic.attributes?.country) {
-      stopSpin(); updateSpinButton();
-      flyToCountry(graphic.attributes.country);
-    } else if (graphic.layer === highlightLayer) {
-      stopSpin(); updateSpinButton();
-      const atlasName = graphic.attributes.COUNTRY;
-      const reverseMap = { "United States": "United States of America", "Turkiye": "Turkey", "Russian Federation": "Russia", "South Korea": "Korea", "Congo DRC": "Democratic Republic of the Congo", "Congo": "Republic of the Congo" };
-      openSidebar(reverseMap[atlasName] || atlasName);
+      return;
+    }
+
+    // Query country at click location using spatial query
+    const mapPoint = view.toMap(event);
+    if (mapPoint) {
+      try {
+        const result = await countryClickLayer.queryFeatures({
+          geometry: mapPoint,
+          spatialRelationship: "intersects",
+          outFields: ["COUNTRY"],
+          returnGeometry: false,
+          maxRecordCount: 1,
+        });
+        if (result.features.length) {
+          const atlasName = result.features[0].attributes?.COUNTRY;
+          if (!atlasName) return;
+          stopSpin(); updateSpinButton();
+          const country = reverseCountryMap[atlasName] || atlasName;
+          state.country = country;
+          state.regionCountries = null;
+          applyFilters(state, layers);
+          getFilteredCount(queryLayer, state).then(updateArtifactCount);
+          updateDashboard(state); updateFilterBar(state);
+          await flyToCountry(country);
+        }
+      } catch {}
     }
   });
 
@@ -710,7 +829,45 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       groupByFieldsForStatistics: ["country"],
       returnGeometry: false,
     }).then((r) => updateCountryCount(r.features.length));
-    updateDashboard(state);
+    updateDashboard(state); updateFilterBar(state);
+
+    // Refresh country popup if open
+    if (activeCountry && view.popup.visible) {
+      const content = await buildCountryPopupContent(activeCountry);
+      view.popup.content = content;
+    }
+
     resumeSpin();
   });
+
+  // --- DEBUG: Camera inspector (press D to toggle) ---
+  const debugEl = document.createElement("div");
+  debugEl.id = "camera-debug";
+  debugEl.style.cssText = "position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);color:#0ff;font:12px monospace;padding:8px 14px;border-radius:6px;z-index:9999;display:none;white-space:pre;pointer-events:none;";
+  document.body.appendChild(debugEl);
+
+  let debugVisible = false;
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "`") {
+      debugVisible = !debugVisible;
+      debugEl.style.display = debugVisible ? "block" : "none";
+    }
+  });
+
+  reactiveUtils.watch(
+    () => view.camera,
+    (cam) => {
+      if (!debugVisible || !cam) return;
+      const p = cam.position;
+      const lng = p.longitude ?? p.x;
+      const lat = p.latitude ?? p.y;
+      debugEl.textContent =
+        `zoom:    ${view.zoom?.toFixed(2)}\n` +
+        `heading: ${cam.heading?.toFixed(2)}\n` +
+        `tilt:    ${cam.tilt?.toFixed(2)}\n` +
+        `lng:     ${lng?.toFixed(4)}\n` +
+        `lat:     ${lat?.toFixed(4)}\n` +
+        `z (alt): ${Math.round(p.z)}`;
+    }
+  );
 });

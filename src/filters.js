@@ -33,6 +33,9 @@ export function buildWhere(state) {
   }
   if (state.country) {
     parts.push(`country = '${state.country.replace(/'/g, "''")}'`);
+  } else if (state.regionCountries?.length) {
+    const expr = state.regionCountries.map(c => `'${c.replace(/'/g, "''")}'`).join(",");
+    parts.push(`country IN (${expr})`);
   }
   if (state.timeRange) {
     const timeClause = `year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`;
