@@ -19,7 +19,7 @@ import { getQueryWhere } from "./filters.js";
 let centroids = null;
 async function loadCentroids() {
   if (centroids) return centroids;
-  const resp = await fetch("/data/centroids.json");
+  const resp = await fetch(import.meta.env.BASE_URL + "data/centroids.json");
   centroids = await resp.json();
   return centroids;
 }

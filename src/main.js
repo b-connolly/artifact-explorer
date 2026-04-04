@@ -407,7 +407,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         const country = feature.attributes.country;
         let centroid = null;
         try {
-          const resp = await fetch("/data/centroids.json");
+          const resp = await fetch(import.meta.env.BASE_URL + "data/centroids.json");
           const centroids = await resp.json();
           centroid = centroids[country];
         } catch {}
