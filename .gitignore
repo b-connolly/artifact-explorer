@@ -6,9 +6,6 @@ dist
 scripts/
 data/
 
-# Keep runtime data
-!data/centroids.json
-
 # OS
 .DS_Store
 Thumbs.db
