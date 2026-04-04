@@ -23,9 +23,7 @@ Explore artifacts from three of the world's largest collections:
 
 - [ArcGIS Maps SDK for JavaScript](https://developers.arcgis.com/javascript/) (v5, web components)
 - [Vite](https://vitejs.dev/) build tool
-- Vanilla JavaScript, no framework
 - Hosted FeatureLayer + SceneLayer on ArcGIS Online
-- Thumbnails and static assets on AWS S3
 
 ## Setup
 
