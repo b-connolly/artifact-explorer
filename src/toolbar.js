@@ -166,6 +166,8 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   dashToggle.title = "Toggle dashboard";
   dashToggle.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14"><rect x="3" y="14" width="4" height="7" rx="1" fill="currentColor" opacity="0.6"/><rect x="10" y="7" width="4" height="14" rx="1" fill="currentColor" opacity="0.8"/><rect x="17" y="3" width="4" height="18" rx="1" fill="currentColor"/></svg>`;
   dashToggle.addEventListener("click", () => toggleDashboard());
+  // Dashboard starts open on desktop
+  if (window.innerWidth > 768) dashToggle.classList.add("active");
 
   // --- Museum multi-select pills ---
   const museumBar = document.createElement("div");
@@ -266,6 +268,34 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
     }
   });
   observer.observe(document.body, { childList: true });
+
+  // Reveal controls tray when hovering related UI elements
+  let revealTimeout = null;
+  const revealTray = () => {
+    clearTimeout(revealTimeout);
+    tray.classList.add("revealed");
+  };
+  const hideTray = () => {
+    revealTimeout = setTimeout(() => tray.classList.remove("revealed"), 400);
+  };
+
+  for (const el of [wrapper, museumBar]) {
+    el.addEventListener("mouseenter", revealTray);
+    el.addEventListener("mouseleave", hideTray);
+  }
+  // Dashboard and time-slider are created elsewhere — bind after DOM ready
+  requestAnimationFrame(() => {
+    for (const id of ["dashboard", "time-slider"]) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener("mouseenter", revealTray);
+        el.addEventListener("mouseleave", hideTray);
+      }
+    }
+  });
+  // Keep tray visible while hovering tray itself
+  tray.addEventListener("mouseenter", () => clearTimeout(revealTimeout));
+  tray.addEventListener("mouseleave", hideTray);
 }
 
 let onResetAll = null;
@@ -297,12 +327,17 @@ function createLegendPanel(onMuseumChange) {
         <span class="legend-dot" style="background:rgb(150,50,150)"></span>
         <span>The Met</span>
       </div>
+      <div class="legend-item legend-museum-item" data-museum="smithsonian">
+        <span class="legend-dot" style="background:rgb(0,112,68)"></span>
+        <span>Smithsonian</span>
+      </div>
     </div>
     <div class="legend-section legend-note">
       <svg width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2" width="4" height="14" rx="1" fill="rgba(50,70,170,0.7)"/>
-        <rect x="7" y="6" width="4" height="10" rx="1" fill="rgba(0,160,190,0.7)"/>
-        <rect x="12" y="10" width="3" height="6" rx="1" fill="rgba(150,50,150,0.7)"/>
+        <rect x="1" y="2" width="3" height="14" rx="1" fill="rgba(50,70,170,0.7)"/>
+        <rect x="5" y="6" width="3" height="10" rx="1" fill="rgba(0,160,190,0.7)"/>
+        <rect x="9" y="10" width="3" height="6" rx="1" fill="rgba(150,50,150,0.7)"/>
+        <rect x="13" y="8" width="3" height="8" rx="1" fill="rgba(0,112,68,0.7)"/>
       </svg>
       Column height represents artifact count
     </div>
@@ -339,12 +374,13 @@ function createInfoModal() {
     <div class="info-panel">
       <button class="info-close">&times;</button>
       <h1 class="info-title">Artifact Explorer</h1>
-      <p class="info-subtitle">An interactive 3D globe visualizing over <strong>270,000 artifacts</strong> held in the world's major museums, mapped back to their countries of origin.</p>
+      <p class="info-subtitle">An interactive 3D globe visualizing over <strong>280,000 artifacts</strong> held in the world's major museums, mapped back to their countries of origin.</p>
       <p class="info-subtitle">Select a country to see which museums hold its cultural heritage and explore individual pieces from each collection.</p>
       <div class="info-museums">
         <a class="info-museum" style="--mc: rgb(50,70,170)" href="https://www.britishmuseum.org/collection" target="_blank">The British Museum</a>
         <a class="info-museum" style="--mc: rgb(0,160,190)" href="https://collections.louvre.fr" target="_blank">The Louvre Museum</a>
         <a class="info-museum" style="--mc: rgb(150,50,150)" href="https://metmuseum.github.io" target="_blank">The Metropolitan Museum of Art</a>
+        <a class="info-museum" style="--mc: rgb(0,112,68)" href="https://www.si.edu/openaccess" target="_blank">Smithsonian Institution</a>
       </div>
       <p class="info-note">Partial collection. Only artifacts with images and identifiable origins are shown.</p>
       <div class="info-footer">

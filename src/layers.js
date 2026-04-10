@@ -42,6 +42,7 @@ export const MUSEUM_COLORS = {
   british_museum: [50, 70, 170],
   louvre:         [0, 160, 190],
   met:            [150, 50, 150],
+  smithsonian:    [0, 112, 68],
 };
 
 // --- SceneLayer renderer (particles mode) ---
@@ -441,6 +442,11 @@ export function createLayers(view) {
   };
 }
 
+// --- Museum label class ---
+// Single class with deconflictionStrategy "none" to guarantee all 4 labels show.
+// SceneView cross-class deconfliction can hide labels from secondary classes,
+// so a single class with generous offset is more reliable than multiple classes.
+
 // --- Museum pin layer ---
 
 function createMuseumPinLayer() {
@@ -506,7 +512,7 @@ function createMuseumPinLayer() {
           font: { size: 11, weight: "bold" },
           halo: { color: [0, 0, 0, 0.6], size: 1.5 },
         }],
-        verticalOffset: { screenLength: 60, maxWorldLength: 300000, minWorldLength: 30000 },
+        verticalOffset: { screenLength: 80, maxWorldLength: 500000, minWorldLength: 30000 },
         callout: { type: "line", color: [0, 0, 0, 0], size: 0 },
       },
       labelPlacement: "above-center",

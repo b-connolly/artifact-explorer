@@ -58,8 +58,8 @@ export async function updateArcs(queryLayer, state, layers) {
     if (cnt > maxCount) maxCount = cnt;
   }
 
-  // For "All Museums" — no arcs, only country highlights (handled by columns.js)
-  if (isAll) return;
+  // For "All Museums" without country — no arcs
+  if (isAll && !state.country) return;
 
   const centroidsJson = await loadCentroids();
   const graphics = [];

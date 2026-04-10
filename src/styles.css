@@ -484,25 +484,29 @@ body:has(#sidebar.open) #filter-bar {
   letter-spacing: 0.04em;
 }
 
-/* dash-toggle styles inherited from #controls-tray button */
+#dash-toggle.active {
+  color: #00E9FF;
+  border-color: rgba(0, 233, 255, 0.25);
+}
 
 /* --- Controls tray (bottom-right) --- */
 #controls-tray {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  bottom: 0;
+  right: 0;
   z-index: 10;
   display: flex;
   flex-direction: column;
   gap: 6px;
   align-items: center;
-  padding: 6px;
+  padding: 40px 14px 14px 40px;
   border-radius: 8px;
   opacity: 0.15;
-  transition: opacity 0.25s;
+  transition: opacity 0.3s;
 }
 
-#controls-tray:hover {
+#controls-tray:hover,
+#controls-tray.revealed {
   opacity: 1;
 }
 
@@ -974,6 +978,10 @@ body:has(#sidebar.open) #filter-bar {
 
 .dash-bar-row.selected {
   background: rgba(0, 233, 255, 0.08);
+}
+
+.dash-bar-row.dimmed {
+  opacity: 0.35;
 }
 
 .dash-museum-dot {
@@ -1461,10 +1469,25 @@ a.info-museum:hover {
     left: 8px;
   }
 
-  /* Popup — constrain to viewport */
+  /* Popup — compact on mobile */
   .esri-popup__main-container {
     width: 90vw !important;
     max-width: 360px !important;
+    max-height: 40vh !important;
+  }
+
+  .esri-popup__content {
+    max-height: 30vh !important;
+    overflow-y: auto !important;
+  }
+
+  /* Hide legend bars, center pie + show explore button */
+  .popup-legend {
+    display: none !important;
+  }
+
+  .popup-row {
+    justify-content: center;
   }
 
   /* Info splash — tighter on mobile */

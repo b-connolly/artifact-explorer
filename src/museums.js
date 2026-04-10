@@ -23,4 +23,12 @@ export const MUSEUMS = {
     lng: 2.336,
     color: [0, 160, 190],
   },
+  smithsonian: {
+    id: "smithsonian",
+    name: "Smithsonian",
+    city: "Washington DC",
+    lat: 38.888,
+    lng: -77.026,
+    color: [0, 112, 68],
+  },
 };

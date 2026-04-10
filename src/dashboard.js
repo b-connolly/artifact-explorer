@@ -206,6 +206,8 @@ export function updateDashboard(state) {
 export function toggleDashboard() {
   if (!dashboardEl) return;
   dashboardEl.classList.toggle("collapsed");
+  const btn = document.getElementById("dash-toggle");
+  if (btn) btn.classList.toggle("active", !dashboardEl.classList.contains("collapsed"));
 }
 
 // --- DOM ---
@@ -253,9 +255,13 @@ async function runUpdate(state) {
     const needsFlowUpdate = museumWhere !== lastMuseumWhere;
     lastMuseumWhere = museumWhere;
 
+    // Museum list ignores museum filter; country list ignores country/region filter
+    const museumListWhere = buildWhere({ ...state, museum: "all" });
+    const countryListWhere = buildWhere({ ...state, country: null, regionCountries: null });
+
     const queries = [
-      queryMuseumStats(where),
-      queryCountryStats(where),
+      queryMuseumStats(museumListWhere),
+      queryCountryStats(countryListWhere),
       queryTimeStats(where),
     ];
     if (needsFlowUpdate) queries.push(queryHeatmapStats(museumWhere));
@@ -345,10 +351,17 @@ function renderMuseumBars(data, state) {
   const body = document.getElementById("dash-museums-body");
   if (!body) return;
 
-  // "All Museums" row + individual museums
+  // Build lookup from query results
+  const countMap = {};
+  for (const d of data) countMap[d.museum] = d.count;
+
   const totalCount = data.reduce((s, d) => s + d.count, 0);
+  const isAll = !state.museum || state.museum === "all";
+  const activeMuseums = isAll ? null : (Array.isArray(state.museum) ? new Set(state.museum) : new Set([state.museum]));
+
+  // "All Museums" row
   let html = `
-    <div class="dash-bar-row dash-museum-row${!state.museum || state.museum === "all" ? " selected" : ""}" data-museum="all">
+    <div class="dash-bar-row dash-museum-row${isAll ? " selected" : " dimmed"}" data-museum="all">
       <span class="dash-museum-dot" style="background:rgb(160,160,180)"></span>
       <span class="dash-bar-label">All Museums</span>
       <div class="dash-bar-track">
@@ -357,20 +370,22 @@ function renderMuseumBars(data, state) {
       <span class="dash-bar-value">${totalCount.toLocaleString()}</span>
     </div>`;
 
-  for (const d of data) {
-    const color = MUSEUM_COLORS[d.museum] || [200, 60, 50];
-    const name = MUSEUMS[d.museum]?.name || d.museum;
-    const isSelected = state.museum === d.museum || state.museum === "all" || !state.museum;
-    const selected = isSelected ? " selected" : "";
-    const pct = (d.count / totalCount) * 100;
+  // Always show all museums
+  for (const id of Object.keys(MUSEUMS)) {
+    const color = MUSEUM_COLORS[id] || [200, 60, 50];
+    const name = MUSEUMS[id]?.name || id;
+    const count = countMap[id] || 0;
+    const isSelected = isAll || (activeMuseums && activeMuseums.has(id));
+    const cls = isSelected ? " selected" : " dimmed";
+    const pct = totalCount > 0 ? (count / totalCount) * 100 : 0;
     html += `
-      <div class="dash-bar-row dash-museum-row${selected}" data-museum="${d.museum}">
+      <div class="dash-bar-row dash-museum-row${cls}" data-museum="${id}">
         <span class="dash-museum-dot" style="background:rgb(${color.join(",")})"></span>
         <span class="dash-bar-label">${name}</span>
         <div class="dash-bar-track">
           <div class="dash-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, rgba(${color.join(",")},0.4), rgba(${color.join(",")},0.7))"></div>
         </div>
-        <span class="dash-bar-value">${d.count.toLocaleString()}</span>
+        <span class="dash-bar-value">${count.toLocaleString()}</span>
       </div>`;
   }
   body.innerHTML = html;
@@ -389,12 +404,14 @@ function renderCountryBars(data, state) {
 
   const top = data.slice(0, 8);
   const max = top[0]?.count || 1;
+  const hasCountryFilter = !!state.country;
 
   body.innerHTML = top.map((d) => {
     const pct = (d.count / max) * 100;
-    const selected = state.country === d.country ? " selected" : "";
+    const isSelected = state.country === d.country;
+    const cls = hasCountryFilter && !isSelected ? " dimmed" : (isSelected ? " selected" : "");
     return `
-      <div class="dash-bar-row${selected}" data-country="${esc(d.country)}">
+      <div class="dash-bar-row${cls}" data-country="${esc(d.country)}">
         <span class="dash-bar-label">${esc(d.country)}</span>
         <div class="dash-bar-track">
           <div class="dash-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, rgba(200,200,210,0.15), rgba(200,200,210,0.35))"></div>
@@ -554,7 +571,7 @@ function drawFlow(canvas, progress) {
   const { grid, museums, regions, regionTotals } = canvas._flowData;
 
   const leftX = 70;
-  const rightX = W - 80;
+  const rightX = W - 90;
   const padY = 10;
   const gap = 8;
 
@@ -636,6 +653,7 @@ function drawFlow(canvas, progress) {
   const MUSEUM_SHORT = {
     met: "The Met", louvre: "Louvre",
     british_museum: "British\nMuseum",
+    smithsonian: "Smithsonian",
   };
   const REGION_SHORT = {
     "Middle East": "Mid East",

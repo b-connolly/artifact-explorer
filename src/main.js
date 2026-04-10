@@ -145,7 +145,9 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       columnLayer.visible = true;
       await updateColumns(queryLayer, state, layers);
 
-      if (state.museum && state.museum !== "all" && !Array.isArray(state.museum)) {
+      const singleMuseum = state.museum && state.museum !== "all" && !Array.isArray(state.museum);
+      const withCountry = state.country && state.museum;
+      if (singleMuseum || withCountry) {
         arcLayer.visible = true;
         await updateArcs(queryLayer, state, layers);
       }
@@ -274,18 +276,17 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       setMuseumFilter(state.museum);
       pulseForMuseum(state.museum);
 
-      // Fly to museum when a single museum is selected
       if (typeof state.museum === "string" && state.museum !== "all" && MUSEUMS[state.museum]) {
-        const m = MUSEUMS[state.museum];
         stopSpin();
-        await view.goTo({
-          position: { x: m.lng, y: 37, z: 18_000_000, spatialReference: { wkid: 4326 } },
-        }, { duration: 2000 });
       } else if (!state.museum) {
         stopSpin();
       }
       updateSpinButton();
       await update();
+      // Fly to museum view after columns/arcs are rendered (only if no country selected)
+      if (typeof state.museum === "string" && state.museum !== "all" && MUSEUMS[state.museum] && !state.country) {
+        await flyToMuseumView(state.museum);
+      }
     },
     null,
     (mode) => {
@@ -303,13 +304,12 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       state.country = country;
       state.regionCountries = null;
       stopSpin(); updateSpinButton();
-      applyFilters(state, layers);
-      getFilteredCount(queryLayer, state).then(updateArtifactCount);
+      update();
       updateCountryCount(1);
       updateDashboard(state); updateFilterBar(state);
       await flyToCountry(country);
     },
-    onMuseumSelect: (museumId) => {
+    onMuseumSelect: async (museumId) => {
       state.museum = museumId;
       state.regionCountries = null;
       setMuseumFilter(museumId);
@@ -321,6 +321,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       });
       updateSpinButton();
       update();
+      if (!state.country) await flyToMuseumView(museumId);
     },
     onRegionSelect: async (regionName) => {
       const REGION_CENTERS = {
@@ -340,11 +341,16 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
       stopSpin(); updateSpinButton();
 
-      // Store region countries on state so buildWhere can use it
+      // Clear country selection, arcs, and highlight
       state.regionCountries = countries;
       state.country = null;
-      applyFilters(state, layers);
-      getFilteredCount(queryLayer, state).then(updateArtifactCount);
+      activeCountry = null;
+      clearCountryHighlight(layers);
+      stopCountryPulse();
+      clearArcs(layers);
+      view.closePopup();
+
+      update();
       queryLayer.queryFeatures({
         where: buildWhere(state),
         outStatistics: [{ statisticType: "count", onStatisticField: "ObjectId", outStatisticFieldName: "cnt" }],
@@ -353,13 +359,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       }).then((r) => updateCountryCount(r.features.length));
       updateDashboard(state); updateFilterBar(state);
 
-      // Update columns
-      if (state.viewMode === "columns" && state.museum) {
-        updateColumns(queryLayer, state, layers);
-      }
-
       // Zoom to region
-      await view.goTo({ center: [center.lng, center.lat], zoom: center.zoom }, { duration: 1500 });
+      await view.goTo({
+        center: [center.lng, center.lat],
+        zoom: center.zoom,
+        heading: 0,
+        tilt: 0,
+      }, { duration: 1500 });
     },
     onTimeSelect: (lo, hi) => {
       state.timeRange = (lo != null && hi != null) ? { lo, hi } : null;
@@ -467,11 +473,11 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     });
     // Update state and filters
     state.museum = museumId;
+    updateMuseumCount(1);
     setMuseumFilter(museumId);
     pulseForMuseum(museumId);
-    applyFilters(state, layers);
-    getFilteredCount(queryLayer, state).then(updateArtifactCount);
-    updateDashboard(state); updateFilterBar(state);
+    // Rebuild columns + arcs with country filter applied
+    update();
     // Re-open popup with updated pie
     flyToCountry(country);
   }
@@ -504,6 +510,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
     // Layout: pie on left, legend on right
     const row = document.createElement("div");
+    row.className = "popup-row";
     row.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:12px;";
 
     // Donut chart
@@ -586,6 +593,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
     // Legend column — museum bars with prominent percentages
     const legend = document.createElement("div");
+    legend.className = "popup-legend";
     legend.style.cssText = "flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;";
     for (const d of museumData) {
       const color = MUSEUM_COLORS[d.id] || [150, 150, 150];
@@ -646,6 +654,59 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     return div;
   }
 
+  async function flyToMuseumView(museumId) {
+    const museum = MUSEUMS[museumId];
+    if (!museum?.lat) return;
+
+    // Get top countries to find where arcs fan out
+    let centroids;
+    try {
+      const resp = await fetch(import.meta.env.BASE_URL + "data/centroids.json");
+      centroids = await resp.json();
+    } catch { return; }
+
+    const topResult = await queryLayer.queryFeatures({
+      where: `museum_id = '${museumId}'`,
+      outStatistics: [{ statisticType: "count", onStatisticField: "ObjectId", outStatisticFieldName: "cnt" }],
+      groupByFieldsForStatistics: ["country"],
+      returnGeometry: false,
+    });
+
+    const countries = topResult.features
+      .map((f) => ({ country: f.attributes.country, count: f.attributes.cnt }))
+      .filter((d) => centroids[d.country])
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    if (!countries.length) return;
+
+    // Find weighted average direction of top countries from museum
+    let wLng = 0, wLat = 0, totalW = 0;
+    for (const c of countries) {
+      const cen = centroids[c.country];
+      const w = Math.sqrt(c.count);
+      wLng += cen.lng * w;
+      wLat += cen.lat * w;
+      totalW += w;
+    }
+    const avgLng = wLng / totalW;
+    const avgLat = wLat / totalW;
+
+    // Position camera: center on museum, offset slightly away from countries
+    // so museum is in upper part of view and arcs fan out below/across
+    const dLng = avgLng - museum.lng;
+    const dLat = avgLat - museum.lat;
+    const centerLng = museum.lng + dLng * 0.3;
+    const centerLat = museum.lat + dLat * 0.3 - 8;
+
+    await view.goTo({
+      center: [centerLng, centerLat],
+      zoom: 3.8,
+      heading: 0,
+      tilt: 15,
+    }, { duration: 2000 });
+  }
+
   async function flyToCountry(country) {
     let centroid = null;
     try {
@@ -663,15 +724,32 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       if (isMobile) {
         view.popup.dockOptions = { buttonEnabled: false, breakpoint: false, position: "bottom-center" };
         const dashEl = document.getElementById("dashboard");
-        if (dashEl) dashEl.classList.add("collapsed");
+        if (dashEl) { dashEl.classList.add("collapsed"); document.getElementById("dash-toggle")?.classList.remove("active"); }
       }
 
-      await view.goTo({
-        center: [centroid.lng, centroid.lat - 3],
-        zoom: 5.4,
-        heading: 0,
-        tilt: 28,
-      }, { duration: 1500 });
+      // If a single museum is selected, frame both museum + country
+      const singleMuseum = state.museum && state.museum !== "all" && !Array.isArray(state.museum) && MUSEUMS[state.museum];
+      if (singleMuseum) {
+        const m = MUSEUMS[state.museum];
+        const midLng = (m.lng + centroid.lng) / 2;
+        const midLat = (m.lat + centroid.lat) / 2;
+        const spread = Math.sqrt(Math.pow(m.lng - centroid.lng, 2) + Math.pow(m.lat - centroid.lat, 2));
+        const zoom = Math.max(3, Math.min(5, 5.5 - spread / 15));
+        const latOffset = spread * 0.15;
+        await view.goTo({
+          center: [midLng, midLat - latOffset],
+          zoom,
+          heading: 0,
+          tilt: 10,
+        }, { duration: 1500 });
+      } else {
+        await view.goTo({
+          center: [centroid.lng, centroid.lat - 3],
+          zoom: 5.4,
+          heading: 0,
+          tilt: 28,
+        }, { duration: 1500 });
+      }
 
       const content = await buildCountryPopupContent(country);
       view.openPopup({
@@ -693,7 +771,13 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       state.museum = mid;
       setMuseumFilter(mid);
       pulseForMuseum(mid);
-      update();
+      updateMuseumCount(1);
+      document.querySelectorAll("#museum-pills .museum-pill").forEach((p) => {
+        p.classList.toggle("active", p.dataset.museum === mid);
+      });
+      stopSpin(); updateSpinButton();
+      await update();
+      if (!state.country) await flyToMuseumView(mid);
       return;
     }
 
@@ -715,8 +799,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
           const country = reverseCountryMap[atlasName] || atlasName;
           state.country = country;
           state.regionCountries = null;
-          applyFilters(state, layers);
-          getFilteredCount(queryLayer, state).then(updateArtifactCount);
+          update();
           updateCountryCount(1);
           updateDashboard(state); updateFilterBar(state);
           await flyToCountry(country);
@@ -745,7 +828,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     (visible) => {
       if (!visible) {
         const dashEl = document.getElementById("dashboard");
-        if (dashEl && window.innerWidth > 768) dashEl.classList.remove("collapsed");
+        if (dashEl && window.innerWidth > 768) { dashEl.classList.remove("collapsed"); document.getElementById("dash-toggle")?.classList.add("active"); }
         view.popup.dockEnabled = window.innerWidth <= 768;
         // Only clear darken mask if no country is actively selected
         stopCountryPulse();
@@ -784,7 +867,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
         // Hide dashboard, dock popup on right, fly to country
         const dashEl = document.getElementById("dashboard");
-        if (dashEl) dashEl.classList.add("collapsed");
+        if (dashEl) { dashEl.classList.add("collapsed"); document.getElementById("dash-toggle")?.classList.remove("active"); }
 
         view.popup.dockEnabled = true;
         view.popup.dockOptions = {
@@ -799,10 +882,6 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
         if (centroid) {
           startCountryPulse(centroid.lng, centroid.lat);
-          await view.goTo({
-            center: [centroid.lng, centroid.lat],
-            zoom: 5,
-          }, { duration: 1000 });
           view.openPopup({
             features: [feature],
             location: { x: centroid.lng, y: centroid.lat, spatialReference: { wkid: 4326 } },
@@ -810,7 +889,6 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
         } else {
           const geo = feature.geometry;
           startCountryPulse(geo.longitude, geo.latitude);
-          await view.goTo({ target: geo, zoom: 5 }, { duration: 1000 });
           view.openPopup({ features: [feature], location: geo });
         }
       }
