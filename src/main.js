@@ -20,7 +20,7 @@ import { initFilters, applyFilters, getFilteredCount, buildWhere } from "./filte
 import { updateColumns, clearColumns } from "./columns.js";
 import { updateArcs, clearArcs } from "./arcs.js";
 import { loadThumbnails, clearThumbnails } from "./thumbnails.js";
-import { initSidebar, openSidebar, closeSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
+import { initSidebar, openSidebar, openMuseumSidebar, closeSidebar, setTimeFilter, setMuseumFilter } from "./sidebar.js";
 import { initToolbar, updateArtifactCount, updateCountryCount, updateMuseumCount, showImageProgress, hideImageProgress, updateFilterBar, registerResetCallbacks } from "./toolbar.js";
 import { initTimeSlider, setTimeRange, getIncludeUndated } from "./time-slider.js";
 import { initDashboard, updateDashboard, CONTINENT_MAP } from "./dashboard.js";
@@ -66,14 +66,8 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   const layers = createLayers(view);
   const { sceneLayer, queryLayer, thumbLayer, columnLayer, arcLayer, countryClickLayer, museumLayer } = layers;
 
-  // Init filter system (gets sceneLayerView for client-side filtering)
+
   await queryLayer.load();
-  try {
-    await sceneLayer.load();
-    await initFilters(view, sceneLayer);
-  } catch (e) {
-    console.warn("SceneLayer failed to load — particles mode unavailable:", e.message);
-  }
 
   // Sidebar
   initSidebar(queryLayer);
@@ -183,33 +177,10 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     else startPulse([museumId]);
   }
 
-  // --- Globe spin ---
+  // --- Globe spin (disabled for performance) ---
   let spinning = false;
-  let spinRAF = null;
-  const SPIN_SPEED = 3; // degrees per second
-
-  function startSpin() {
-    if (spinning) return;
-    spinning = true;
-    let lastTime = performance.now();
-    function frame(now) {
-      if (!spinning) return;
-      const dt = (now - lastTime) / 1000; // seconds since last frame
-      lastTime = now;
-      // Clamp dt to avoid jumps from tab switching or heavy load
-      const clampedDt = Math.min(dt, 0.1);
-      const camera = view.camera.clone();
-      camera.position.longitude += SPIN_SPEED * clampedDt;
-      view.camera = camera;
-      spinRAF = requestAnimationFrame(frame);
-    }
-    spinRAF = requestAnimationFrame(frame);
-  }
-
-  function stopSpin() {
-    spinning = false;
-    if (spinRAF) { cancelAnimationFrame(spinRAF); spinRAF = null; }
-  }
+  function startSpin() {}
+  function stopSpin() {}
 
   // Processing spinner
   const spinnerEl = document.createElement("div");
@@ -763,6 +734,68 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   // --- Click handling ---
   const reverseCountryMap = { "United States": "United States of America", "Turkiye": "Turkey", "Russian Federation": "Russia", "South Korea": "Korea", "Congo DRC": "Democratic Republic of the Congo", "Congo": "Republic of the Congo" };
 
+  async function buildMuseumPopupContent(museumId) {
+    const museum = MUSEUMS[museumId];
+    if (!museum) return null;
+    const color = museum.color.join(",");
+
+    // Get artifact count for this museum (respecting time filter)
+    const countParts = [`museum_id = '${museumId}'`];
+    if (state.timeRange) {
+      countParts.push(`year_end >= ${state.timeRange.lo} AND year_start <= ${state.timeRange.hi}`);
+    }
+    const artifactCount = await queryLayer.queryFeatureCount({ where: countParts.join(" AND ") });
+
+    const div = document.createElement("div");
+    div.className = "museum-popup";
+    div.style.cssText = "font-family:system-ui;color:#ddd;width:100%;";
+
+    // Hero photo
+    if (museum.photo) {
+      const img = document.createElement("img");
+      img.src = museum.photo;
+      img.alt = museum.name;
+      img.className = "museum-popup-photo";
+      img.style.cssText = "width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:10px;";
+      img.onerror = () => { img.style.display = "none"; };
+      div.appendChild(img);
+    }
+
+    // Address with pin icon → Google Maps link
+    if (museum.address) {
+      const mapsUrl = `https://www.google.com/maps?q=${museum.lat},${museum.lng}`;
+      const addrEl = document.createElement("a");
+      addrEl.href = mapsUrl;
+      addrEl.target = "_blank";
+      addrEl.rel = "noopener";
+      addrEl.className = "museum-popup-address";
+      addrEl.style.cssText = "display:flex;align-items:center;gap:5px;font-size:11px;color:#888;text-decoration:none;margin-bottom:10px;transition:color 0.12s;";
+      addrEl.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${museum.address}`;
+      addrEl.onmouseenter = () => { addrEl.style.color = "#00E9FF"; };
+      addrEl.onmouseleave = () => { addrEl.style.color = "#888"; };
+      div.appendChild(addrEl);
+    }
+
+    // Artifact count badge
+    const countBadge = document.createElement("div");
+    countBadge.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:13px;";
+    countBadge.innerHTML = `<span style="color:#00E9FF;font-weight:600;font-variant-numeric:tabular-nums;">${artifactCount.toLocaleString()}</span><span style="color:#666;">artifacts in collection</span>`;
+    div.appendChild(countBadge);
+
+    // Explore button
+    const exploreBtn = document.createElement("button");
+    exploreBtn.textContent = "Explore Artifacts →";
+    exploreBtn.style.cssText = "padding:9px 16px;background:rgba(0,233,255,0.08);border:1px solid rgba(0,233,255,0.25);border-radius:6px;color:#00E9FF;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;width:100%;transition:all 0.15s;letter-spacing:0.02em;";
+    exploreBtn.onmouseenter = () => { exploreBtn.style.background = "rgba(0,233,255,0.18)"; exploreBtn.style.borderColor = "rgba(0,233,255,0.5)"; };
+    exploreBtn.onmouseleave = () => { exploreBtn.style.background = "rgba(0,233,255,0.08)"; exploreBtn.style.borderColor = "rgba(0,233,255,0.25)"; };
+    exploreBtn.addEventListener("click", () => {
+      openMuseumSidebar(museumId);
+    });
+    div.appendChild(exploreBtn);
+
+    return div;
+  }
+
   view.on("click", async (event) => {
     // First check for museum pins (highest priority)
     const pinHit = await view.hitTest(event, { include: [museumLayer] });
@@ -777,6 +810,28 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
       });
       stopSpin(); updateSpinButton();
       await update();
+
+      // Show museum popup — collapse dashboard first
+      const museum = MUSEUMS[mid];
+      if (museum) {
+        const dashEl = document.getElementById("dashboard");
+        if (dashEl) { dashEl.classList.add("collapsed"); document.getElementById("dash-toggle")?.classList.remove("active"); }
+
+        view.popup.dockEnabled = true;
+        view.popup.dockOptions = {
+          buttonEnabled: true,
+          breakpoint: false,
+          position: window.innerWidth <= 768 ? "bottom-center" : "top-right",
+        };
+
+        const content = await buildMuseumPopupContent(mid);
+        view.openPopup({
+          title: museum.name,
+          location: { x: museum.lng, y: museum.lat, spatialReference: { wkid: 4326 } },
+          content,
+        });
+      }
+
       if (!state.country) await flyToMuseumView(mid);
       return;
     }

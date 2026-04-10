@@ -6,6 +6,9 @@ export const MUSEUMS = {
     lat: 51.519,
     lng: -0.127,
     color: [50, 70, 170],
+    address: "Great Russell St, London WC1B 3DG, UK",
+    photo: "https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/images/british_museum.jpg",
+    url: "https://www.britishmuseum.org",
   },
   met: {
     id: "met",
@@ -14,6 +17,9 @@ export const MUSEUMS = {
     lat: 40.779,
     lng: -73.963,
     color: [150, 50, 150],
+    address: "1000 Fifth Avenue, New York, NY 10028, USA",
+    photo: "https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/images/met.jpg",
+    url: "https://www.metmuseum.org",
   },
   louvre: {
     id: "louvre",
@@ -22,6 +28,9 @@ export const MUSEUMS = {
     lat: 48.861,
     lng: 2.336,
     color: [0, 160, 190],
+    address: "Rue de Rivoli, 75001 Paris, France",
+    photo: "https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/images/louvre.jpg",
+    url: "https://www.louvre.fr",
   },
   smithsonian: {
     id: "smithsonian",
@@ -30,5 +39,8 @@ export const MUSEUMS = {
     lat: 38.888,
     lng: -77.026,
     color: [0, 112, 68],
+    address: "1000 Jefferson Dr SW, Washington, DC 20560, USA",
+    photo: "https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/images/smithsonian.jpg",
+    url: "https://www.si.edu",
   },
 };

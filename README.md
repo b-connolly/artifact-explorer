@@ -2,7 +2,7 @@
 
 Interactive 3D globe visualizing 270,000+ museum artifacts mapped back to their countries of origin.
 
-Explore artifacts from three of the world's largest collections:
+Explore artifacts from four of the world's largest collections:
 
 - **British Museum** — London
 - **Louvre** — Paris
@@ -17,14 +17,13 @@ Explore artifacts from three of the world's largest collections:
 - Dashboard with museum stats, top countries, timeline histogram, and collection origins flow diagram
 - Country sidebar with scrollable thumbnail grid grouped by museum
 - Artifact popup with hero image, metadata, and link to source collection
-- Globe spin animation with pause/resume
-- Country highlight with darken mask and pulsing centroid ring on artifact selection
+- Country highlight with darken mask on artifact selection
 
 ## Tech Stack
 
 - [ArcGIS Maps SDK for JavaScript](https://developers.arcgis.com/javascript/) (v5, web components)
 - [Vite](https://vitejs.dev/) build tool
-- Hosted FeatureLayer + SceneLayer on ArcGIS Online
+- Hosted FeatureLayer on ArcGIS Online
 
 ## Data Sources
 

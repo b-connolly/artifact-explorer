@@ -245,25 +245,19 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   document.body.appendChild(museumBar);
 
   // --- Controls tray (bottom-right) ---
-  const spinToggle = document.createElement("button");
-  spinToggle.id = "spin-toggle";
-  spinToggle.title = "Toggle globe spin";
-  spinToggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
-
   const tray = document.createElement("div");
   tray.id = "controls-tray";
   tray.appendChild(infoBtn);
   tray.appendChild(dashToggle);
   tray.appendChild(legendToggle);
   // time-toggle is appended by time-slider.js, will be moved into tray
-  tray.appendChild(spinToggle);
   document.body.appendChild(tray);
 
   // Move time-toggle into tray once it's created (by time-slider.js)
   const observer = new MutationObserver(() => {
     const timeToggle = document.getElementById("time-toggle");
     if (timeToggle && timeToggle.parentElement !== tray) {
-      tray.insertBefore(timeToggle, spinToggle);
+      tray.appendChild(timeToggle);
       observer.disconnect();
     }
   });

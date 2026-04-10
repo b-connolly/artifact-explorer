@@ -903,6 +903,20 @@ body:has(#sidebar.open) #filter-bar {
   opacity: 1;
 }
 
+/* Museum labels (HTML overlays) */
+/* Museum popup */
+.museum-popup-photo {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.museum-popup-address:hover {
+  color: #00E9FF;
+}
+
 /* Popup auto-height — expand to fit content */
 .esri-popup__main-container {
   max-height: 85vh !important;

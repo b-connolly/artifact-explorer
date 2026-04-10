@@ -23,7 +23,6 @@ import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol.js";
 import Graphic from "@arcgis/core/Graphic.js";
 import Point from "@arcgis/core/geometry/Point.js";
 import Glow from "@arcgis/core/webscene/Glow.js";
-import * as reactiveUtils from "@arcgis/core/core/reactiveUtils.js";
 import { MUSEUMS } from "./museums.js";
 
 // --- HTML escaping for popup content ---
@@ -165,133 +164,12 @@ export function buildPopup() {
 
 // --- Create all layers ---
 
-// --- Museum pulse animation ---
-let pulseCanvas = null;
-let pulseCtx = null;
-let pulseAnimId = null;
-let pulseMuseums = []; // [{ screenPoint, color }]
-let pulseView = null;
-
-function initPulseCanvas(view) {
-  pulseView = view;
-  pulseCanvas = document.createElement("canvas");
-  pulseCanvas.id = "museum-pulse-canvas";
-  pulseCanvas.style.cssText = "position:absolute;inset:0;pointer-events:none;z-index:5;";
-  view.container.appendChild(pulseCanvas);
-
-  function resize() {
-    const dpr = window.devicePixelRatio || 1;
-    pulseCanvas.width = view.width * dpr;
-    pulseCanvas.height = view.height * dpr;
-    pulseCanvas.style.width = view.width + "px";
-    pulseCanvas.style.height = view.height + "px";
-    pulseCtx = pulseCanvas.getContext("2d");
-    pulseCtx.scale(dpr, dpr);
-  }
-  resize();
-  reactiveUtils.watch(() => [view.width, view.height], resize);
-}
-
-let pulseT = 0;
-
-function ensurePulseLoop() {
-  if (pulseAnimId) return; // already running
-  function animate() {
-    pulseT = (pulseT + 0.003) % 1;
-    const dpr = window.devicePixelRatio || 1;
-    pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-
-    for (const target of pulseMuseums) {
-      const sp = pulseView.toScreen(target.point);
-      if (!sp) continue;
-      const maxR = 25;
-      const r = 8 + pulseT * maxR;
-      const alpha = 0.3 * (1 - pulseT);
-      const [cr, cg, cb] = target.color;
-      pulseCtx.beginPath();
-      pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
-      pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-      pulseCtx.lineWidth = 1.5;
-      pulseCtx.stroke();
-    }
-
-    drawCountryPulse(pulseT);
-
-    // Stop loop if nothing to animate
-    if (pulseMuseums.length === 0 && !countryPulseTarget) {
-      cancelAnimationFrame(pulseAnimId);
-      pulseAnimId = null;
-      pulseCtx.clearRect(0, 0, pulseCanvas.width / dpr, pulseCanvas.height / dpr);
-      return;
-    }
-    pulseAnimId = requestAnimationFrame(animate);
-  }
-  pulseAnimId = requestAnimationFrame(animate);
-}
-
-function startPulse(museumIds) {
-  pulseMuseums = [];
-  if (!museumIds.length || !pulseView) return;
-
-  pulseMuseums = museumIds
-    .map((id) => ({ id, museum: MUSEUMS[id] }))
-    .filter((t) => t.museum)
-    .map((t) => ({
-      point: new Point({ longitude: t.museum.lng, latitude: t.museum.lat, spatialReference: { wkid: 4326 } }),
-      color: MUSEUM_COLORS[t.id] || t.museum.color,
-    }));
-
-  ensurePulseLoop();
-}
-
-function stopPulse() {
-  pulseMuseums = [];
-  // Loop will self-stop on next frame if countryPulseTarget is also null
-}
-
-// --- Country centroid pulse ---
-let countryPulseTarget = null; // { point, color }
-
-function startCountryPulse(lng, lat, color = [0, 233, 255]) {
-  countryPulseTarget = {
-    point: new Point({ longitude: lng, latitude: lat, spatialReference: { wkid: 4326 } }),
-    color,
-  };
-  ensurePulseLoop();
-}
-
-function stopCountryPulse() {
-  countryPulseTarget = null;
-  // Loop will self-stop on next frame if pulseMuseums is also empty
-}
-
-function drawCountryPulse(globalT) {
-  if (!countryPulseTarget || !pulseView) return;
-  const sp = pulseView.toScreen(countryPulseTarget.point);
-  if (!sp) return;
-
-  const [cr, cg, cb] = countryPulseTarget.color;
-
-  // Single ring, heartbeat speed
-  const maxR = 35;
-  const r = 6 + globalT * maxR;
-  const alpha = 0.3 * (1 - globalT);
-
-  pulseCtx.beginPath();
-  pulseCtx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
-  pulseCtx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
-  pulseCtx.lineWidth = 1.5;
-  pulseCtx.stroke();
-
-  // Soft center glow
-  const gradient = pulseCtx.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, 6);
-  gradient.addColorStop(0, `rgba(${cr},${cg},${cb},0.5)`);
-  gradient.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-  pulseCtx.beginPath();
-  pulseCtx.arc(sp.x, sp.y, 6, 0, Math.PI * 2);
-  pulseCtx.fillStyle = gradient;
-  pulseCtx.fill();
-}
+// --- Pulse animations (disabled for performance) ---
+function initPulseCanvas() {}
+function startPulse() {}
+function stopPulse() {}
+function startCountryPulse() {}
+function stopCountryPulse() {}
 
 // --- Country highlight (darken + outline) ---
 
@@ -310,15 +188,17 @@ function highlightCountry(countryName, layers) {
   const atlasName = ATLAS_NAME_MAP[countryName] || countryName;
   const escaped = atlasName.replace(/'/g, "''");
 
-  // Darken everything except the selected country
   layers.darkenLayer.definitionExpression = `COUNTRY <> '${escaped}'`;
+  layers.darkenLayer.visible = true;
 
-  // Highlight the selected country with glow outline
   layers.highlightLayer.definitionExpression = `COUNTRY = '${escaped}'`;
+  layers.highlightLayer.visible = true;
 }
 
 function clearCountryHighlight(layers) {
+  layers.darkenLayer.visible = false;
   layers.darkenLayer.definitionExpression = "1=0";
+  layers.highlightLayer.visible = false;
   layers.highlightLayer.definitionExpression = "1=0";
 }
 
@@ -376,11 +256,11 @@ export function createLayers(view) {
       }),
     }),
     definitionExpression: "1=0",
-    visible: true,
+    visible: false,
     title: "Country Darken",
   });
 
-  // Country highlight overlay — always visible, controlled by definitionExpression
+  // Country highlight overlay — hidden until a country is selected
   const highlightLayer = new FeatureLayer({
     url: COUNTRIES_URL,
     renderer: new SimpleRenderer({
@@ -390,7 +270,7 @@ export function createLayers(view) {
       }),
     }),
     definitionExpression: "1=0",
-    visible: true,
+    visible: false,
     title: "Country Highlights",
   });
 
@@ -417,10 +297,12 @@ export function createLayers(view) {
 
   // Add layers in draw order (bottom → top)
   // countryClickLayer on top of columns so it receives clicks
+  // SceneLayer excluded — service is down (root node missing).
+  // sceneLayer object still returned so references don't break;
+  // it just won't be added to the map or attempt to load.
   view.map.addMany([
     darkenLayer,
     highlightLayer,
-    sceneLayer,
     queryLayer,
     columnLayer,
     thumbLayer,
@@ -502,25 +384,11 @@ function createMuseumPinLayer() {
         symbol: makeMuseumPinSymbol(MUSEUM_COLORS[id] || m.color),
       })),
     }),
-    labelingInfo: [{
-      labelExpressionInfo: { expression: "$feature.name" },
-      symbol: {
-        type: "label-3d",
-        symbolLayers: [{
-          type: "text",
-          material: { color: [255, 255, 255, 0.9] },
-          font: { size: 11, weight: "bold" },
-          halo: { color: [0, 0, 0, 0.6], size: 1.5 },
-        }],
-        verticalOffset: { screenLength: 80, maxWorldLength: 500000, minWorldLength: 30000 },
-        callout: { type: "line", color: [0, 0, 0, 0], size: 0 },
-      },
-      labelPlacement: "above-center",
-      deconflictionStrategy: "none",
-    }],
+    labelsVisible: false, // Labels handled by HTML overlays (initMuseumLabels)
     elevationInfo: { mode: "on-the-ground" },
     visible: false,
     title: "Museums",
   });
 
 }
+

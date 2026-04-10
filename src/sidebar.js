@@ -5,6 +5,7 @@ let layerRef = null;
 let currentCountry = null;
 let currentTimeRange = null;
 let currentMuseumId = null;
+let currentMuseumOnly = null; // when viewing a single museum's artifacts by country
 
 function formatYear(y) {
   if (y == null) return "";
@@ -43,7 +44,8 @@ export function initSidebar(layer) {
   document.getElementById("sidebar-search-clear").addEventListener("click", () => {
     const input = document.getElementById("sidebar-search-input");
     input.value = "";
-    renderSidebar();
+    if (currentMuseumOnly) renderMuseumSidebar();
+    else renderSidebar();
   });
 
   // Search with debounce
@@ -55,7 +57,8 @@ export function initSidebar(layer) {
       if (query.length >= 2) {
         searchArtifacts(query);
       } else if (query.length === 0) {
-        renderSidebar();
+        if (currentMuseumOnly) renderMuseumSidebar();
+        else renderSidebar();
       }
     }, 300);
   });
@@ -77,6 +80,7 @@ export function setTimeFilter(lo, hi) {
 
 export function openSidebar(countryName, highlightId, museumOverride) {
   currentCountry = countryName;
+  currentMuseumOnly = null;
   // Only clear search and re-render if not mid-search
   const searchInput = document.getElementById("sidebar-search-input");
   const isSearching = searchInput && searchInput.value.trim().length >= 2;
@@ -197,10 +201,13 @@ async function searchArtifacts(query) {
   const escaped = query.replace(/'/g, "''").replace(/%/g, "\\%");
   const parts = [`title LIKE '%${escaped}%'`];
 
-  if (currentCountry) {
+  // In museum-only mode, scope search to that museum (no country filter)
+  if (currentMuseumOnly) {
+    parts.push(`museum_id = '${currentMuseumOnly}'`);
+  } else if (currentCountry) {
     parts.push(`country = '${currentCountry.replace(/'/g, "''")}'`);
   }
-  const museumToFilter = currentMuseumId;
+  const museumToFilter = currentMuseumOnly ? null : currentMuseumId;
   if (museumToFilter && museumToFilter !== "all") {
     if (Array.isArray(museumToFilter)) {
       parts.push(`museum_id IN (${museumToFilter.map(id => `'${id}'`).join(",")})`);
@@ -226,7 +233,8 @@ async function searchArtifacts(query) {
     .filter((a) => a.image_url);
 
   // Update header for search mode
-  document.getElementById("sidebar-title").textContent = currentCountry || "Search Results";
+  const searchTitle = currentMuseumOnly ? MUSEUMS[currentMuseumOnly]?.name : currentCountry;
+  document.getElementById("sidebar-title").textContent = searchTitle || "Search Results";
   document.getElementById("sidebar-count").textContent =
     `${artifacts.length} result${artifacts.length !== 1 ? "s" : ""}`;
   document.getElementById("sidebar-time-range").textContent = "";
@@ -291,7 +299,107 @@ async function searchArtifacts(query) {
   }
 }
 
+export function openMuseumSidebar(museumId) {
+  currentMuseumOnly = museumId;
+  currentCountry = null;
+  const searchInput = document.getElementById("sidebar-search-input");
+  if (searchInput) searchInput.value = "";
+  renderMuseumSidebar();
+  sidebarEl.classList.add("open");
+}
+
+async function renderMuseumSidebar() {
+  if (!layerRef || !currentMuseumOnly) return;
+
+  const museum = MUSEUMS[currentMuseumOnly];
+  if (!museum) return;
+
+  const parts = [`museum_id = '${currentMuseumOnly}'`];
+  if (currentTimeRange) {
+    parts.push(`year_end >= ${currentTimeRange.lo} AND year_start <= ${currentTimeRange.hi}`);
+  }
+  const where = parts.join(" AND ");
+
+  const content = document.getElementById("sidebar-content");
+  content.innerHTML = `<div style="color:#666;padding:20px;text-align:center">Loading...</div>`;
+
+  // Get total count
+  const totalCount = await layerRef.queryFeatureCount({ where });
+
+  // Get country breakdown
+  const statsResult = await layerRef.queryFeatures({
+    where,
+    outStatistics: [{ statisticType: "count", onStatisticField: "ObjectId", outStatisticFieldName: "cnt" }],
+    groupByFieldsForStatistics: ["country"],
+    returnGeometry: false,
+  });
+  const countryGroups = statsResult.features
+    .map((f) => ({ country: f.attributes.country, count: f.attributes.cnt }))
+    .filter((d) => d.country)
+    .sort((a, b) => b.count - a.count);
+
+  // Get artifacts for display (cap at 200)
+  const result = await layerRef.queryFeatures({
+    where,
+    outFields: ["artifact_id", "title", "image_url", "original_image_url", "museum_id", "date_range", "year_start", "year_end", "country"],
+    returnGeometry: false,
+    maxRecordCount: 200,
+  });
+  const allArtifacts = result.features
+    .map((f) => f.attributes)
+    .filter((a) => a.image_url);
+
+  const color = museum.color.join(",");
+  document.getElementById("sidebar-title").innerHTML =
+    `<span class="sidebar-museum-badge" style="background:rgb(${color});display:inline-block;vertical-align:middle;margin-right:6px"></span>${museum.name}`;
+  document.getElementById("sidebar-count").textContent =
+    `${totalCount.toLocaleString()} artifact${totalCount !== 1 ? "s" : ""} · ${countryGroups.length} ${countryGroups.length !== 1 ? "countries" : "country"}`;
+  document.getElementById("sidebar-time-range").textContent = "";
+
+  content.innerHTML = "";
+
+  const byCountry = Object.groupBy(allArtifacts, (a) => a.country);
+
+  // Render sections in order of countryGroups (desc by count)
+  for (const { country, count } of countryGroups) {
+    const artifacts = byCountry[country];
+    if (!artifacts?.length) continue;
+
+    const section = document.createElement("div");
+    section.className = "sidebar-museum-section";
+    section.innerHTML = `
+      <div class="sidebar-museum-header">
+        <span class="sidebar-museum-name" style="color:#ccc">${country}</span>
+        <span class="sidebar-museum-count">${count.toLocaleString()}</span>
+      </div>
+      <div class="sidebar-grid"></div>
+    `;
+
+    const grid = section.querySelector(".sidebar-grid");
+    for (const artifact of artifacts) {
+      const thumb = document.createElement("div");
+      thumb.className = "sidebar-thumb";
+      thumb.dataset.id = artifact.artifact_id || artifact.id;
+
+      const img = document.createElement("img");
+      img.src = artifact.original_image_url || artifact.image_url;
+      img.alt = "";
+      img.loading = "lazy";
+      img.onerror = () => { thumb.style.display = "none"; };
+      thumb.appendChild(img);
+      grid.appendChild(thumb);
+    }
+
+    content.appendChild(section);
+  }
+
+  if (allArtifacts.length === 0) {
+    content.innerHTML = `<div style="color:#666;padding:20px;text-align:center">No artifacts with images</div>`;
+  }
+}
+
 export function closeSidebar() {
   sidebarEl.classList.remove("open");
   currentCountry = null;
+  currentMuseumOnly = null;
 }
