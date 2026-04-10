@@ -374,7 +374,7 @@ function createInfoModal() {
     <div class="info-panel">
       <button class="info-close">&times;</button>
       <h1 class="info-title">Artifact Explorer</h1>
-      <p class="info-subtitle">An interactive 3D globe visualizing over <strong>280,000 artifacts</strong> held in the world's major museums, mapped back to their countries of origin.</p>
+      <p class="info-subtitle">An interactive 3D globe visualizing over <strong>253,000 artifacts</strong> held in the world's major museums, mapped back to their countries of origin.</p>
       <p class="info-subtitle">Select a country to see which museums hold its cultural heritage and explore individual pieces from each collection.</p>
       <div class="info-museums">
         <a class="info-museum" style="--mc: rgb(50,70,170)" href="https://www.britishmuseum.org/collection" target="_blank">The British Museum</a>
