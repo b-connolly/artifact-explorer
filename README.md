@@ -7,7 +7,7 @@ Explore artifacts from three of the world's largest collections:
 - **British Museum** — London
 - **Louvre** — Paris
 - **The Metropolitan Museum of Art** — New York
-- **Smithsonian Institution** - Washington, D.C.
+- **Smithsonian Institution** — Washington, D.C.
 
 ## Features
 
