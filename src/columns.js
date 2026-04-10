@@ -61,7 +61,7 @@ const COUNTRY_RADIUS = {
 
 const COUNTRIES_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Countries_(Generalized)/FeatureServer/0";
 
-const MAX_GRID_CELLS = 120;
+const MAX_GRID_CELLS = 60;
 const MIN_GRID_CELLS = 1;
 const MAX_HEIGHT = 2000000;   // 2000km — dramatic center columns
 const MIN_HEIGHT = 8000;      // 8km — barely visible edge columns

@@ -19,6 +19,7 @@ import UniqueValueRenderer from "@arcgis/core/renderers/UniqueValueRenderer.js";
 import SimpleRenderer from "@arcgis/core/renderers/SimpleRenderer.js";
 import PointSymbol3D from "@arcgis/core/symbols/PointSymbol3D.js";
 import IconSymbol3DLayer from "@arcgis/core/symbols/IconSymbol3DLayer.js";
+import TextSymbol3DLayer from "@arcgis/core/symbols/TextSymbol3DLayer.js";
 import SimpleFillSymbol from "@arcgis/core/symbols/SimpleFillSymbol.js";
 import Graphic from "@arcgis/core/Graphic.js";
 import Point from "@arcgis/core/geometry/Point.js";
@@ -188,16 +189,11 @@ function highlightCountry(countryName, layers) {
   const atlasName = ATLAS_NAME_MAP[countryName] || countryName;
   const escaped = atlasName.replace(/'/g, "''");
 
-  layers.darkenLayer.definitionExpression = `COUNTRY <> '${escaped}'`;
-  layers.darkenLayer.visible = true;
-
   layers.highlightLayer.definitionExpression = `COUNTRY = '${escaped}'`;
   layers.highlightLayer.visible = true;
 }
 
 function clearCountryHighlight(layers) {
-  layers.darkenLayer.visible = false;
-  layers.darkenLayer.definitionExpression = "1=0";
   layers.highlightLayer.visible = false;
   layers.highlightLayer.definitionExpression = "1=0";
 }
@@ -292,6 +288,44 @@ export function createLayers(view) {
   // Museum pins
   const museumLayer = createMuseumPinLayer();
 
+  // Museum labels — separate GraphicsLayer to bypass FeatureLayer deconfliction
+  // BM + Met: labels above (high vertical offset with callout)
+  // Louvre + Smithsonian: labels below (geometry nudged south, no callout)
+  const labelConfig = {
+    british_museum: { latOffset: 0, screenLength: 100, callout: true },
+    louvre:         { latOffset: -4, screenLength: 10, callout: false },
+    met:            { latOffset: 0, screenLength: 100, callout: true },
+    smithsonian:    { latOffset: -4, screenLength: 10, callout: false },
+  };
+  const museumLabelLayer = new GraphicsLayer({
+    title: "Museum Labels",
+    elevationInfo: { mode: "on-the-ground" },
+    visible: false,
+  });
+  Object.entries(MUSEUMS).forEach(([id, m]) => {
+    const color = MUSEUM_COLORS[id] || m.color;
+    const cfg = labelConfig[id] || { latOffset: 0, screenLength: 60, callout: true };
+    const sym = new PointSymbol3D({
+      symbolLayers: [
+        new TextSymbol3DLayer({
+          text: m.name,
+          material: { color: [...color, 0.95] },
+          font: { size: 9, weight: "bold", family: "system-ui" },
+          halo: { color: [0, 0, 0, 0.8], size: 1.5 },
+        }),
+      ],
+      verticalOffset: { screenLength: cfg.screenLength, maxWorldLength: 400000, minWorldLength: 30000 },
+    });
+    if (cfg.callout) {
+      sym.callout = { type: "line", color: [...color, 0.3], size: 0.5 };
+    }
+    museumLabelLayer.add(new Graphic({
+      geometry: new Point({ longitude: m.lng, latitude: m.lat + cfg.latOffset, spatialReference: { wkid: 4326 } }),
+      symbol: sym,
+      attributes: { museum_id: id },
+    }));
+  });
+
   // Glow post-processing
   view.environment.lighting.glow = new Glow({ intensity: 0.5 });
 
@@ -301,7 +335,6 @@ export function createLayers(view) {
   // sceneLayer object still returned so references don't break;
   // it just won't be added to the map or attempt to load.
   view.map.addMany([
-    darkenLayer,
     highlightLayer,
     queryLayer,
     columnLayer,
@@ -309,6 +342,7 @@ export function createLayers(view) {
     arcLayer,
     countryClickLayer,
     museumLayer,
+    museumLabelLayer,
   ]);
 
   return {
@@ -321,6 +355,7 @@ export function createLayers(view) {
     highlightLayer,
     countryClickLayer,
     museumLayer,
+    museumLabelLayer,
   };
 }
 
@@ -384,7 +419,7 @@ function createMuseumPinLayer() {
         symbol: makeMuseumPinSymbol(MUSEUM_COLORS[id] || m.color),
       })),
     }),
-    labelsVisible: false, // Labels handled by HTML overlays (initMuseumLabels)
+    labelsVisible: false,
     elevationInfo: { mode: "on-the-ground" },
     visible: false,
     title: "Museums",

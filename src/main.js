@@ -57,14 +57,14 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   view.popup.maxInlineActions = 0;
   view.popup.autoOpenEnabled = false;
   view.highlightOptions = { color: [0, 0, 0, 0], haloColor: [0, 0, 0, 0], fillOpacity: 0 };
-  view.goTo({ position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 } });
+  await view.goTo({ position: { spatialReference: { wkid: 4326 }, x: 20, y: 10, z: 25_000_000 }, heading: 0, tilt: 0 }, { animate: false });
 
   // Pulse canvas for museum selection
   initPulseCanvas(view);
 
   // Create all layers
   const layers = createLayers(view);
-  const { sceneLayer, queryLayer, thumbLayer, columnLayer, arcLayer, countryClickLayer, museumLayer } = layers;
+  const { sceneLayer, queryLayer, thumbLayer, columnLayer, arcLayer, countryClickLayer, museumLayer, museumLabelLayer } = layers;
 
 
   await queryLayer.load();
@@ -113,18 +113,24 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     columnLayer.visible = false;
     arcLayer.visible = false;
 
-    // Filter museum pins to selected museum(s)
+    // Filter museum pins + labels to selected museum(s)
     if (!state.museum) {
       museumLayer.visible = false;
-    } else if (Array.isArray(state.museum)) {
-      museumLayer.visible = true;
-      museumLayer.definitionExpression = `museum_id IN (${state.museum.map((id) => `'${id}'`).join(",")})`;
-    } else if (state.museum !== "all") {
-      museumLayer.visible = true;
-      museumLayer.definitionExpression = `museum_id = '${state.museum}'`;
+      museumLabelLayer.visible = false;
     } else {
       museumLayer.visible = true;
-      museumLayer.definitionExpression = "1=1";
+      museumLabelLayer.visible = true;
+      const activeIds = !state.museum || state.museum === "all"
+        ? null // show all
+        : Array.isArray(state.museum) ? state.museum : [state.museum];
+      if (activeIds) {
+        museumLayer.definitionExpression = `museum_id IN (${activeIds.map((id) => `'${id}'`).join(",")})`;
+        const idSet = new Set(activeIds);
+        museumLabelLayer.graphics.forEach((g) => { g.visible = idSet.has(g.attributes.museum_id); });
+      } else {
+        museumLayer.definitionExpression = "1=1";
+        museumLabelLayer.graphics.forEach((g) => { g.visible = true; });
+      }
     }
 
     if (!state.museum) {
@@ -177,10 +183,26 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
     else startPulse([museumId]);
   }
 
-  // --- Globe spin (disabled for performance) ---
+  // --- Globe spin ---
   let spinning = false;
-  function startSpin() {}
-  function stopSpin() {}
+  let spinRAF = null;
+
+  function startSpin() {
+    if (spinning) return;
+    spinning = true;
+    (function frame() {
+      if (!spinning) return;
+      const cam = view.camera.clone();
+      cam.position.longitude -= 0.04;
+      view.camera = cam;
+      spinRAF = requestAnimationFrame(frame);
+    })();
+  }
+
+  function stopSpin() {
+    spinning = false;
+    if (spinRAF) { cancelAnimationFrame(spinRAF); spinRAF = null; }
+  }
 
   // Processing spinner
   const spinnerEl = document.createElement("div");
@@ -193,15 +215,12 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   `;
   document.body.appendChild(spinnerEl);
 
-  let spinWasActive = false;
   function pauseSpin() {
-    spinWasActive = spinning;
     if (spinning) stopSpin();
     spinnerEl.classList.add("visible");
   }
   function resumeSpin() {
     spinnerEl.classList.remove("visible");
-    if (spinWasActive && !spinning && !view.popup.visible) startSpin();
     updateSpinButton();
   }
 
@@ -361,9 +380,10 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
   // Start with all museums active — spin + pulse + columns
   setMuseumFilter("all");
   pulseForMuseum("all");
-  if (window.innerWidth > 768) startSpin();
-  updateSpinButton();
-  update();
+  update().then(() => {
+    if (window.innerWidth > 768) startSpin();
+    setTimeout(() => updateSpinButton(), 50);
+  });
 
   // --- Reset callbacks for filter bar ---
   registerResetCallbacks(
@@ -420,7 +440,7 @@ sceneEl.addEventListener("arcgisViewReadyChange", async () => {
 
       // Zoom out to initial view — reset tilt to 0
       await view.goTo({
-        position: { spatialReference: { wkid: 4326 }, x: -20, y: 30, z: 18_000_000 },
+        position: { spatialReference: { wkid: 4326 }, x: 20, y: 10, z: 25_000_000 },
         heading: 0,
         tilt: 0,
       }, { duration: 1500 });

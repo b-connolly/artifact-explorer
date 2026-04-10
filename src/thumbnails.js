@@ -1,15 +1,18 @@
 /**
  * thumbnails.js — Image mode: sampled thumbnails on the globe.
  *
- * Loads 500 S3 thumbnails evenly sampled across the filtered dataset,
- * displayed as IconSymbol3DLayer icons within country boundaries.
+ * Loads 150 S3 thumbnails evenly sampled across the filtered dataset.
+ * Shows colored dot placeholders instantly, then swaps to real images
+ * progressively as they load.
  */
 
 import Graphic from "@arcgis/core/Graphic.js";
+import PointSymbol3D from "@arcgis/core/symbols/PointSymbol3D.js";
+import IconSymbol3DLayer from "@arcgis/core/symbols/IconSymbol3DLayer.js";
 import { getQueryWhere } from "./filters.js";
-import { buildPopup } from "./layers.js";
+import { buildPopup, MUSEUM_COLORS } from "./layers.js";
 
-const MAX_THUMBNAILS = 500;
+const MAX_THUMBNAILS = 150;
 const THUMB_FIELDS = [
   "artifact_id", "title", "image_url", "museum_id", "country",
   "date_range", "year_start", "year_end", "category", "source_url",
@@ -18,13 +21,31 @@ const THUMB_FIELDS = [
 let lastFilterKey = "";
 let sharedPopup = null;
 
+// Pre-build one placeholder symbol per museum (reused across all graphics)
+const placeholderSymbols = {};
+for (const [id, color] of Object.entries(MUSEUM_COLORS)) {
+  placeholderSymbols[id] = new PointSymbol3D({
+    symbolLayers: [
+      new IconSymbol3DLayer({
+        resource: { primitive: "circle" },
+        material: { color },
+        size: 12,
+      }),
+    ],
+  });
+}
+const defaultPlaceholder = new PointSymbol3D({
+  symbolLayers: [
+    new IconSymbol3DLayer({
+      resource: { primitive: "circle" },
+      material: { color: [150, 150, 150] },
+      size: 12,
+    }),
+  ],
+});
+
 /**
  * Load sampled thumbnails into the thumbLayer.
- * @param {FeatureLayer} queryLayer
- * @param {GraphicsLayer} thumbLayer
- * @param {Object} state
- * @param {Function} showProgress — (loaded, total)
- * @param {Function} hideProgress
  */
 export async function loadThumbnails(queryLayer, thumbLayer, state, showProgress, hideProgress) {
   if (!sharedPopup) sharedPopup = buildPopup();
@@ -79,35 +100,55 @@ export async function loadThumbnails(queryLayer, thumbLayer, state, showProgress
   const total = features.length;
   if (total === 0) { hideProgress(); return; }
 
+  // Phase 1: Add all graphics with placeholder dot symbols (instant)
+  const graphics = features.map((f) => {
+    const a = f.attributes;
+    return new Graphic({
+      geometry: f.geometry,
+      symbol: placeholderSymbols[a.museum_id] || defaultPlaceholder,
+      attributes: { ...a, _thumbUrl: a.image_url },
+      popupTemplate: sharedPopup,
+    });
+  });
+
+  thumbLayer.addMany(graphics);
   showProgress(0, total);
 
-  const BATCH = 100;
+  // Phase 2: Swap to real images progressively as they load
   let loaded = 0;
+  const CONCURRENCY = 8;
+  let idx = 0;
 
-  for (let i = 0; i < features.length; i += BATCH) {
-    const batch = features.slice(i, i + BATCH);
-    const graphics = batch.map((f) => {
-      const a = f.attributes;
-      return new Graphic({
-        geometry: f.geometry,
-        symbol: {
+  async function loadNext() {
+    while (idx < graphics.length) {
+      const i = idx++;
+      const g = graphics[i];
+      const url = g.attributes._thumbUrl;
+      try {
+        await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        g.symbol = {
           type: "point-3d",
           symbolLayers: [{
             type: "icon",
-            resource: { href: a.image_url },
+            resource: { href: url },
             size: 28,
           }],
-        },
-        attributes: { ...a, _thumbUrl: a.image_url },
-        popupTemplate: sharedPopup,
-      });
-    });
-
-    thumbLayer.addMany(graphics);
-    loaded += batch.length;
-    showProgress(loaded, total);
-    await new Promise((r) => setTimeout(r, 30));
+        };
+      } catch {
+        // Image failed — keep placeholder
+      }
+      showProgress(++loaded, total);
+    }
   }
+
+  // Run CONCURRENCY image loads in parallel
+  await Promise.all(Array.from({ length: CONCURRENCY }, loadNext));
+  hideProgress();
 }
 
 export function clearThumbnails(thumbLayer) {

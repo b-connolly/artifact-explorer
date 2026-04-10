@@ -244,12 +244,20 @@ export function initToolbar(onMuseumChange, _onCountryChange, onViewModeChange) 
   document.body.appendChild(filterBarEl);
   document.body.appendChild(museumBar);
 
+  // --- Spin toggle ---
+  const spinToggle = document.createElement("button");
+  spinToggle.id = "spin-toggle";
+  spinToggle.title = "Toggle globe spin";
+  // Default to play icon — main.js updateSpinButton will set correct state
+  spinToggle.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
+
   // --- Controls tray (bottom-right) ---
   const tray = document.createElement("div");
   tray.id = "controls-tray";
   tray.appendChild(infoBtn);
   tray.appendChild(dashToggle);
   tray.appendChild(legendToggle);
+  tray.appendChild(spinToggle);
   // time-toggle is appended by time-slider.js, will be moved into tray
   document.body.appendChild(tray);
 
