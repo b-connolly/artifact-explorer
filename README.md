@@ -30,5 +30,6 @@ Explore artifacts from three of the world's largest collections:
 - [British Museum Collection](https://www.britishmuseum.org/collection)
 - [Louvre Collections](https://collections.louvre.fr)
 - [The Met Open Access](https://metmuseum.github.io)
+- [Smithsonian Open Access](https://www.si.edu/openaccess)
 
 This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are included, representing a fraction of each museum's total holdings.
