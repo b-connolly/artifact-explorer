@@ -4,10 +4,10 @@
   
 Explore artifacts from four of the world's largest collections:
 
-- **British Museum** — London
-- **Louvre** — Paris
-- **The Metropolitan Museum of Art** — New York
-- **Smithsonian Institution** — Washington, D.C.
+- [British Museum Collection](https://www.britishmuseum.org/collection)
+- [Louvre Collections](https://collections.louvre.fr)
+- [The Met Open Access](https://metmuseum.github.io)
+- [Smithsonian Open Access](https://www.si.edu/openaccess)
 
 ## Features
 
@@ -24,12 +24,5 @@ Explore artifacts from four of the world's largest collections:
 - [ArcGIS Maps SDK for JavaScript](https://developers.arcgis.com/javascript/) (v5, web components)
 - [Vite](https://vitejs.dev/) build tool
 - Hosted [FeatureLayer](https://www.arcgis.com/home/item.html?id=799920d25b7248b6978adf6b4fb15595) on ArcGIS Online
-
-## Data Sources
-
-- [British Museum Collection](https://www.britishmuseum.org/collection)
-- [Louvre Collections](https://collections.louvre.fr)
-- [The Met Open Access](https://metmuseum.github.io)
-- [Smithsonian Open Access](https://www.si.edu/openaccess)
 
 This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are included, representing a fraction of each museum's total holdings.
