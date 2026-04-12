@@ -9,6 +9,8 @@ Explore artifacts from four of the world's largest collections:
 - [The Met Open Access](https://metmuseum.github.io)
 - [Smithsonian Open Access](https://www.si.edu/openaccess)
 
+Note: This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are included, representing a fraction of each museum's total holdings.
+
 ## Features
 
 - 3D globe (ArcGIS SceneView) with extruded country columns sized by artifact count
@@ -25,4 +27,3 @@ Explore artifacts from four of the world's largest collections:
 - [Vite](https://vitejs.dev/) build tool
 - Hosted [FeatureLayer](https://www.arcgis.com/home/item.html?id=799920d25b7248b6978adf6b4fb15595) on ArcGIS Online
 
-This is not the full collection from these museums. Only artifacts with available images and identifiable countries of origin are included, representing a fraction of each museum's total holdings.
