@@ -24,7 +24,7 @@ Explore artifacts from four of the world's largest collections:
 
 - [ArcGIS Maps SDK for JavaScript](https://developers.arcgis.com/javascript/) (v5, web components)
 - [Vite](https://vitejs.dev/) build tool
-- Hosted **[FeatureLayer](https://www.arcgis.com/home/item.html?id=799920d25b7248b6978adf6b4fb15595)** on ArcGIS Online
+- Hosted [FeatureLayer](https://www.arcgis.com/home/item.html?id=799920d25b7248b6978adf6b4fb15595) on ArcGIS Online
 
 ## Data Sources
 
