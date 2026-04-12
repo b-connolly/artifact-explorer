@@ -1,7 +1,7 @@
 # Artifact Explorer
 
 Interactive 3D globe visualizing 270,000+ museum artifacts mapped back to their countries of origin.
-**[Demo](https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/index.html)**
+<br>**[Demo](https://esri-imagery-apps.s3.amazonaws.com/apps/artifact-explorer/index.html)**
   
 Explore artifacts from four of the world's largest collections:
 
