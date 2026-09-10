@@ -7,12 +7,13 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/src/styles.css" />
 
-    <!-- GoatCounter. Prefixed so this app's pages are distinguishable from
-         the other apps reporting to the same site. -->
+    <!-- GoatCounter. The deployed copy lives at a nested S3 key, so the real
+         page path is /apps/artifact-explorer/index.html. Report one fixed
+         name instead, both to keep the row readable and so it does not move
+         if the app is ever hosted somewhere else.
+    -->
     <script>
-      window.goatcounter = {
-        path: function (p) { return '/artifact-explorer' + p }
-      }
+      window.goatcounter = { path: '/artifact-explorer' }
     </script>
     <script data-goatcounter="https://bconnolly.goatcounter.com/count"
             async src="https://gc.zgo.at/count.js"></script>
