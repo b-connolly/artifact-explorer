@@ -6,6 +6,17 @@
     <title>Artifact Explorer</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/src/styles.css" />
+
+    <!-- GoatCounter. The deployed copy lives at a nested S3 key, so the real
+         page path is /apps/artifact-explorer/index.html. Report one fixed
+         name instead, both to keep the row readable and so it does not move
+         if the app is ever hosted somewhere else.
+    -->
+    <script>
+      window.goatcounter = { path: '/artifact-explorer' }
+    </script>
+    <script data-goatcounter="https://bconnolly.goatcounter.com/count"
+            async src="https://gc.zgo.at/count.js"></script>
   </head>
   <body class="calcite-mode-dark">
     <div id="loading-overlay">
